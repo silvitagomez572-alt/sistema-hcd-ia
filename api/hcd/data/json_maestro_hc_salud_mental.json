@@ -1,0 +1,112 @@
+{
+    "paciente": {
+        "paciente_id": "HC_001",
+        "edad": 45,
+        "servicio_principal": "Salud Mental"
+    },
+    "internacion": {
+        "primera_estadia_dias": 82,
+        "segunda_estadia_dias": 94,
+        "dias_totales": 176,
+        "reingresos": 1,
+        "cambios_cama": 19
+    },
+    "modelo_nlp": {
+        "modelo": "TF-IDF + Logistic Regression",
+        "accuracy": 0.9298,
+        "archivo_modelo": "modelo_area_intervenciones.pkl"
+    },
+    "carga_asistencial": {
+        "total_intervenciones": 681,
+        "periodo_externacion": 5,
+        "primera_estadia": 193,
+        "segunda_estadia": 483
+    },
+    "intervenciones_por_area": {
+        "enfermeria": 578,
+        "psicologia": 62,
+        "trabajo_social": 12,
+        "psiquiatria": 3,
+        "terapia_ocupacional": 6,
+        "infectologia": 1,
+        "clinica_medica": 1,
+        "nutricion": 1,
+        "otros": 17
+    },
+    "variables_clinicas_detectadas": {
+        "delirio_psicosis": true,
+        "ideas_persecutorias": true,
+        "ideas_filiacion": true,
+        "delirio_embarazo": true,
+        "alucinaciones_cenestesicas": true,
+        "ansiedad_insomnio": true,
+        "vulnerabilidad_social": true,
+        "internacion_prolongada": true,
+        "sin_red_vincular": true,
+        "adherencia_problematica": true
+    },
+    "interconsultas_detectadas": [
+        {
+            "id_interconsulta": 1,
+            "servicios_detectados": [
+                "infectología"
+            ],
+            "estado_interconsulta": "resuelta",
+            "motivo": "Mordedura de perro en muslo izquierdo",
+            "texto_original": "Amoxicilina/clavulánico 1g cada 12hs x 5 días"
+        },
+        {
+            "id_interconsulta": 2,
+            "servicios_detectados": [
+                "clínica médica"
+            ],
+            "estado_interconsulta": "resuelta",
+            "motivo": "Evaluación física por mordedura + TAC + ecografía MMII",
+            "texto_original": "Se solicita ecografía muslo y rodilla + TAC + IC infectología"
+        },
+        {
+            "id_interconsulta": 3,
+            "servicios_detectados": [
+                "nutrición"
+            ],
+            "estado_interconsulta": "resuelta",
+            "motivo": "Valores de laboratorio alterados (colesterol/triglicéridos)",
+            "texto_original": "Consejería nutricional y supervisión de compras"
+        },
+        {
+            "id_interconsulta": 4,
+            "servicios_detectados": [
+                "odontología"
+            ],
+            "estado_interconsulta": "resuelta",
+            "motivo": "Gestión y retiro de prótesis dental",
+            "texto_original": "Se retira prótesis en centro odontológico, turno con especialista 1/12"
+        },
+        {
+            "id_interconsulta": 5,
+            "servicios_detectados": [
+                "ginecología"
+            ],
+            "estado_interconsulta": "realizada",
+            "motivo": "Pendiente IC ginecología por delirio de embarazo",
+            "texto_original": "Se realiza interconsulta con ginecólogo 02/01/2026"
+        },
+        {
+            "id_interconsulta": 6,
+            "servicios_detectados": [
+                "oftalmología"
+            ],
+            "estado_interconsulta": "en_gestión",
+            "motivo": "Tramitación anteojos en INCLUIR SALUD / PRO.FE",
+            "texto_original": "Expediente N°000480 para provisión de anteojos"
+        }
+    ],
+    "estrategia_externacion": {
+        "centro_dia": "El Taller",
+        "cis_talleres": true,
+        "autoadministracion_medicacion": true,
+        "coordinacion_aconquija": true,
+        "informe_organo_revision": true,
+        "acompanante_terapeutico_mencionado": true
+    }
+}
