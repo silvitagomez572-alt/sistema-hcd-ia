@@ -45,3 +45,88 @@ def hcd_metricas():
         "variables_clinicas_detectadas": data["variables_clinicas_detectadas"],
         "estrategia_externacion": data["estrategia_externacion"]
     }
+
+# ============================================================
+# RAG — ChromaDB + Mistral
+# ============================================================
+import httpx
+import chromadb
+from chromadb.utils import embedding_functions
+
+_chroma_client = None
+_collection = None
+
+def get_collection():
+    global _chroma_client, _collection
+    if _collection is None:
+        ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        _chroma_client = chromadb.PersistentClient(path="rag/db")
+        _collection = _chroma_client.get_collection(
+            name="protocolos_clinicos",
+            embedding_function=ef
+        )
+    return _collection
+
+@app.post("/rag/consultar")
+async def rag_consultar(payload: dict):
+    pregunta = payload.get("pregunta", "")
+    collection = get_collection()
+    resultados = collection.query(
+        query_texts=[pregunta],
+        n_results=3
+    )
+    contexto = "\n\n".join(resultados["documents"][0])
+    prompt = f"""Eres un asistente clinico hospitalario. Usa el siguiente contexto para responder en español.
+
+CONTEXTO:
+{contexto}
+
+PREGUNTA: {pregunta}
+
+RESPUESTA:"""
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "mistral", "prompt": prompt, "stream": False}
+        )
+        data = r.json()
+        return {
+            "respuesta": data.get("response", ""),
+            "fuentes": resultados["metadatas"][0]
+        }
+# ============================================================
+# RAG — ChromaDB + Mistral
+# ============================================================
+import httpx
+import chromadb
+from chromadb.utils import embedding_functions
+
+_chroma_client = None
+_collection = None
+
+def get_collection():
+    global _chroma_client, _collection
+    if _collection is None:
+        ef = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        _chroma_client = chromadb.PersistentClient(path="rag/db")
+        _collection = _chroma_client.get_collection(
+            name="protocolos_clinicos",
+            embedding_function=ef
+        )
+    return _collection
+
+@app.post("/rag/consultar")
+async def rag_consultar(payload: dict):
+    pregunta = payload.get("pregunta", "")
+    collection = get_collection()
+    resultados = collection.query(query_texts=[pregunta], n_results=3)
+    contexto = "\n\n".join(resultados["documents"][0])
+    prompt = f"Eres un asistente clinico. Responde en español usando este contexto:\n{contexto}\n\nPregunta: {pregunta}\nRespuesta:"
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post("http://localhost:11434/api/generate", json={"model": "mistral", "prompt": prompt, "stream": False})
+        data = r.json()
+        return {"respuesta": data.get("response", ""), "fuentes": resultados["metadatas"][0]}
