@@ -5,7 +5,7 @@ import chromadb
 from chromadb.utils import embedding_functions
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+import datetime as dt_module
 from zoneinfo import ZoneInfo
 
 AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -172,14 +172,14 @@ def parsear_intervenciones(texto):
         registros.append({"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()})
     return registros
 
-SERVICIOS_EXTERNOS = ["infectologia","infectología","clinica medica","clínica médica","neurologia","neurología","traumatologia","traumatología","nutricion","nutrición","ginecologia","ginecología","psiquiatria","psiquiatría","odontologia","odontología","oftalmologia","oftalmología","cardiologia","cardiología","kinesiologia","kinesiología","fonoaudiologia","fonoaudiología","endocrinologia","endocrinología","urologia","urología","hematologia","hematología","gastroenterologia","gastroenterología","dermatologia","dermatología","reumatologia","reumatología","nefrologia","nefrología","oncologia","oncología","otorrinolaringologia","cirugia vascular","cirugia general","trabajo social","terapia ocupacional"]
+SERVICIOS_SALUD_MENTAL = ["psicologia","psicología","psiquiatria","psiquiatría","enfermeria","enfermería","trabajo social","terapia ocupacional","acompañante terapeutico","acompañante terapéutico","salud mental"]
+SERVICIOS_EXTERNOS = ["cardiologia","cardiología","cirugia","cirugía","cirugia general","cirugía general","cirugia oncologica","cirugia vascular","cirugía vascular","clinica medica","clínica médica","dermatologia","dermatología","endocrinologia","endocrinología","fonoaudiologia","fonoaudiología","gastroenterologia","gastroenterología","ginecologia","ginecología","hematologia","hematología","infectologia","infectología","kinesiologia","kinesiología","nefrologia","nefrología","neurologia","neurología","nutricion","nutrición","oftalmologia","oftalmología","oncologia","oncología","otorrinolaringologia","traumatologia","traumatología","urologia","urología","uco","odontologia","odontología"]
 
 def detectar_ics(registros):
-    svcs = ["infectologia","infectología","clinica medica","clínica médica","neurologia","neurología","traumatologia","traumatología","nutricion","nutrición","ginecologia","ginecología","psiquiatria","psiquiatría","odontologia","odontología","oftalmologia","oftalmología","cardiologia","cardiología","kinesiologia","kinesiología","fonoaudiologia","fonoaudiología","endocrinologia","endocrinología","urologia","urología","hematologia","hematología","gastroenterologia","gastroenterología","dermatologia","dermatología","reumatologia","reumatología","nefrologia","nefrología","oncologia","oncología","otorrinolaringologia","cirugia vascular","cirugía vascular","cirugia general","cirugía general","salud mental","trabajo social","psicologia","psicología","terapia ocupacional"]
     result = []
     for r in registros:
         t = r["texto"].lower()
-        found = list(set([s for s in svcs if s in t]))
+        found = list(set([s for s in SERVICIOS_EXTERNOS if s in t]))
         if found:
             if any(p in t for p in ["ausente","no concurre","no asistio"]):
                 estado = "ausente"
@@ -197,6 +197,21 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     contenido = await archivo.read()
     soup = BeautifulSoup(contenido, "html.parser")
     texto = soup.get_text(separator="\n", strip=True)
+    # Extraer metricas del cronologico
+    import re as re2
+    fechas = re2.findall(r'(\d{2}/\d{2}/\d{4})', texto)
+    if fechas:
+        import datetime as dt_module
+        try:
+            fecha_ini = dt_module.datetime.strptime(fechas[0], "%d/%m/%Y")
+            fecha_fin = dt_module.datetime.strptime(fechas[-1], "%d/%m/%Y")
+            dias_internacion = (fecha_fin - fecha_ini).days
+        except:
+            dias_internacion = 0
+    else:
+        dias_internacion = 0
+    reingresos = texto.lower().count("internación - hospital") + texto.lower().count("internacion - hospital")
+    cambios_cama = texto.lower().count("pase de cama")
     registros = parsear_intervenciones(texto)
     if not registros:
         return {"error": "Sin intervenciones", "archivo": archivo.filename}
@@ -204,10 +219,32 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     textos = [r["texto"] for r in registros]
     areas = modelo.predict(textos)
     conteo = dict(Counter(areas))
+    variables_dict = {
+        "ideacion_autolitica": ["ideacion","ideas de muerte","ideas suicidas","autolesion","intento de suicidio","autolisis"],
+        "alucinaciones": ["alucinac","voces","escucha voces"],
+        "delirio_psicosis": ["delirio","delirante","psicosis","psicotico","f20","esquizofren"],
+        "agresividad": ["agresiv","violencia","heteroagresiv","hostil"],
+        "ansiedad_insomnio": ["ansiedad","insomnio","angustia","agitac","impulsiv"],
+        "vulnerabilidad_social": ["vulnerabilidad social","sin recursos","situacion social"],
+        "sin_red_vincular": ["sin red vincular","sin referente vincular","sin familia","sin apoyo"],
+        "adherencia_problematica": ["no adhiere","abandono","discontinua medicacion","negativ"],
+        "internacion_prolongada": ["internado hace","dias de internacion","internacion prolongada"],
+        "consumo_sustancias": ["consumo","alcohol","droga","adiccion","sustancia"],
+        "ideas_persecutorias": ["persecutori","perseguido","lo persiguen"],
+        "estado_estable": ["tranquil","estable","compensad"],
+        "bradipsiquia": ["bradipsiquic","enlentecido","lentitud"],
+        "sin_criterio_internacion": ["no presenta criterio para continuar internado","ya no requiere internacion"],
+        "riesgo_fuga": ["fuga","se fue sin alta","abandono el servicio"],
+        "crisis": ["crisis","descompensa","reagudiza"]
+    }
+    texto_lower = texto.lower()
+    variables_clinicas = {}
+    for var, palabras in variables_dict.items():
+        variables_clinicas[var] = any(p in texto_lower for p in palabras)
     ics = detectar_ics(registros)
-    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "intervenciones_por_area": conteo, "interconsultas_detectadas": ics[:10]}
+    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
         (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
     con.commit(); con.close()
-    return resumen
+
