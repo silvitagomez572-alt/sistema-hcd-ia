@@ -21,7 +21,7 @@ def load_hcd():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": datetime.now(AR_TZ).isoformat()}
+    return {"status": "ok", "time": datetime.datetime.now().isoformat()}
 
 @app.get("/hcd/summary")
 def hcd_summary():
@@ -172,8 +172,40 @@ def parsear_intervenciones(texto):
         registros.append({"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()})
     return registros
 
+PROFESIONALES_SALUD_MENTAL = {
+    "psiquiatria": ["villagra","gabriela villagra","monjes","heide monjes","zarate","zarate franco","coronel virginia","virginia coronel","luque","palomino"],
+    "trabajo_social": ["garribia","garribia romina","pintos juliana","pintos ana julieta","pintos"],
+    "acompanante_terapeutico": ["elias nieto","nieto ivan","nieto"],
+    "terapia_ocupacional": ["silva maria julia","maria julia silva","julia silva"],
+    "psicopedagogia": ["villalba maria del carmen","villalba"],
+    "psicologia": ["silva eva","eva argentina","arce mauricio","mauricio arce","arce","pinetta amanda","amanda pinetta","noblega","carrizo sonia","sonia carrizo","carrizo","paez flores","hilen paez","paez","aguero lorena","lorena aguero","aguero","agüero","zuliani","cuello ana","cuello","vera cordoba","paula andrea","cordoba","córdoba","gandini","romero maria elena","romero","valverde","silva maria virginia","silva virginia","fernandez irina","segura ianna","medina celeste"],
+    "enfermeria": ["salas silvia","salas silva","correa nancy","vega viviana","ayosa","barrios jorge","collante","romero clelia","luna jose","barrionuevo","aramburu","segobia","herrera ana","ochoa aybar","quispe","vega gordillo","cardenes","maldonado elizabeth","nieva judith"]
+}
+TODOS_PROFESIONALES_SM = [p for profs in PROFESIONALES_SALUD_MENTAL.values() for p in profs]
 SERVICIOS_SALUD_MENTAL = ["psicologia","psicología","psiquiatria","psiquiatría","enfermeria","enfermería","trabajo social","terapia ocupacional","acompañante terapeutico","acompañante terapéutico","salud mental"]
 SERVICIOS_EXTERNOS = ["cardiologia","cardiología","cirugia","cirugía","cirugia general","cirugía general","cirugia oncologica","cirugia vascular","cirugía vascular","clinica medica","clínica médica","dermatologia","dermatología","endocrinologia","endocrinología","fonoaudiologia","fonoaudiología","gastroenterologia","gastroenterología","ginecologia","ginecología","hematologia","hematología","infectologia","infectología","kinesiologia","kinesiología","nefrologia","nefrología","neurologia","neurología","nutricion","nutrición","oftalmologia","oftalmología","oncologia","oncología","otorrinolaringologia","traumatologia","traumatología","urologia","urología","uco","odontologia","odontología"]
+
+def detectar_area_por_profesional(nombre_prof):
+    """Determina el area de un profesional. None si es externo."""
+    nombre_lower = nombre_prof.lower()
+    for area, profs in PROFESIONALES_SALUD_MENTAL.items():
+        if any(p in nombre_lower for p in profs):
+            return area
+    return None  # externo = interconsulta
+
+REGLAS_IC = {
+    "interconsulta_inicial": ["se solicita interconsulta","interconsulta a ","requiere valoracion por","requiere valoración por","solicita ic","pide interconsulta","se pide ic","pendiente i/c","pendiente ic","pendiente interconsulta","i/c pendiente"],
+    "interconsulta_efectiva": ["evaluado por","valorado por","responde interconsulta","se responde interconsulta","se presenta servicio","fue evaluado","fue valorado","se realiza interconsulta","ic realizada","se realiza consulta","consulta nutricional","consulta por","interc.infecto","interc.nutri","interc."],
+    "seguimiento": ["continua seguimiento","continúa seguimiento","revalua","reevalúa","seguimiento por","control por","nueva consulta por","segundo control"]
+}
+
+def clasificar_estado_ic(texto):
+    t = texto.lower()
+    for estado, frases in REGLAS_IC.items():
+        if any(f in t for f in frases):
+            score = 5 if estado == "interconsulta_efectiva" else 4 if estado == "interconsulta_inicial" else 2
+            return estado, score
+    return "mencion_servicio", 0
 
 def detectar_ics(registros):
     result = []
@@ -181,15 +213,9 @@ def detectar_ics(registros):
         t = r["texto"].lower()
         found = list(set([s for s in SERVICIOS_EXTERNOS if s in t]))
         if found:
-            if any(p in t for p in ["ausente","no concurre","no asistio"]):
-                estado = "ausente"
-            elif any(p in t for p in ["reeval","seguimiento","control por","continua"]):
-                estado = "seguimiento"
-            elif any(p in t for p in ["se realiz","se indica","se solicita","interconsulta","evaluad"]):
-                estado = "resuelta"
-            else:
-                estado = "detectada"
-            result.append({"servicios": found, "estado": estado, "motivo": r["texto"][:100], "texto": r["texto"][:200]})
+            estado, score = clasificar_estado_ic(r["texto"])
+            contar = estado != "mencion_servicio"
+            result.append({"servicios": found, "estado_interconsulta": estado, "score": score, "contar": contar, "evidencia": r["texto"][:100], "texto": r["texto"][:200]})
     return result
 
 @app.post("/hcd/procesar-modelo")
@@ -241,10 +267,40 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     variables_clinicas = {}
     for var, palabras in variables_dict.items():
         variables_clinicas[var] = any(p in texto_lower for p in palabras)
+    # Detectar interconsultas por nombre de profesional
+    import re as re3
+    patron_prof = r'Profesional:\s*([A-ZÁÉÍÓÚÑ][^\n]+?)(?:\s*-\s*([A-ZÁÉÍÓÚÑ][^\n]+?))?(?:\s*Matrícula|\s*\d|$)'
+    ics_prof = []
+    for match in re3.finditer(patron_prof, texto):
+        nombre = match.group(1).strip()
+        especialidad = match.group(2).strip() if match.group(2) else ""
+        area_sm = detectar_area_por_profesional(nombre)
+        especialidad_lower = especialidad.lower()
+        es_sm = any(s in especialidad_lower for s in ["psicolog","psiquiat","enfermer","trabajo social","terapia ocup","acompañante","salud mental","guardia de piso"])
+        if area_sm is None and especialidad and not es_sm:
+            # Es externo con especialidad declarada
+            ics_prof.append({
+                "profesional": nombre,
+                "especialidad": especialidad,
+                "estado": "detectada"
+            })
     ics = detectar_ics(registros)
+    # Combinar interconsultas por texto y por profesional
+    for ic_p in ics_prof:
+        if not any(ic_p["especialidad"].lower() in str(ic).lower() for ic in ics):
+            estado_p, score_p = clasificar_estado_ic(ic_p.get("contexto",""))
+            ics.append({
+                "servicios": [ic_p["especialidad"].lower()],
+                "estado_interconsulta": estado_p,
+                "score": score_p,
+                "contar": True,
+                "evidencia": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}",
+                "texto": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}"
+            })
     resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
         (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
     con.commit(); con.close()
+    return resumen
 
