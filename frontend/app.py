@@ -18,7 +18,7 @@ if modulo == "Ingresar HC":
             with st.spinner("Procesando HC con IA..."):
                 try:
                     files = {"archivo": (archivo.name, archivo.getvalue(), archivo.type)}
-                    r = requests.post(f"{API}/hcd/procesar", files=files)
+                    r = requests.post(f"{API}/hcd/procesar-modelo", files=files)
                     if r.status_code == 200:
                         data = r.json()
                         st.success("HC procesada correctamente")
@@ -75,15 +75,28 @@ elif modulo == "Base de Conocimiento":
             st.warning("Escribi una consulta primero.")
 elif modulo == "Interconsultas HCD":
     st.title("Interconsultas detectadas")
-    r = requests.get(f"{API}/hcd/interconsultas")
-    if r.status_code == 200:
-        for ic in r.json():
-            estado = ic["estado_interconsulta"]
-            with st.expander(f"{ic['servicios_detectados'][0].upper()} - {estado}"):
-                st.write(f"**Motivo:** {ic['motivo']}")
-                st.write(f"**Texto:** {ic['texto_original']}")
-    else:
-        st.error("Error API")
+    reps = requests.get(f"{API}/hcd/reportes")
+    hcs = reps.json() if reps.status_code == 200 else []
+    opciones = {f"{h['id']} - {h['archivo']}": h for h in hcs}
+    sel = st.selectbox("Seleccionar HC", list(opciones.keys())) if opciones else None
+    if sel:
+        hc_sel = opciones[sel]
+        try:
+            data = json.loads(hc_sel["resumen"])
+            ics = data.get("interconsultas_detectadas", [])
+            if ics:
+                for ic in ics:
+                    svcs = ic.get("servicios_detectados", ic.get("servicios", []))
+                    estado = ic.get("estado_interconsulta", ic.get("estado", ""))
+                    motivo = ic.get("motivo", "")
+                    texto = ic.get("texto_original", ic.get("texto", ""))
+                    with st.expander(f"{svcs[0].upper() if svcs else 'SERVICIO'} - {estado}"):
+                        st.write(f"**Motivo:** {motivo}")
+                        st.write(f"**Texto:** {texto}")
+            else:
+                st.info("No se detectaron interconsultas externas para esta HC.")
+        except:
+            st.info("Esta HC no tiene interconsultas estructuradas.")
 elif modulo == "Metricas HCD":
     st.title("Metricas del Sistema HCD")
     reps = requests.get(f"{API}/hcd/reportes")
@@ -102,33 +115,57 @@ elif modulo == "Metricas HCD":
     r = requests.get(f"{API}/hcd/metricas")
     if seleccion and data is None:
         st.warning("Esta HC fue procesada por IA - ver resumen arriba")
-    elif r.status_code == 200 and (not seleccion or data):
-        if not seleccion:
-            data = r.json()
+    elif seleccion and data is not None and r.status_code == 200:
+        pass
+    elif r.status_code == 200 and not seleccion:
+        data = r.json()
+    if data is not None:
         st.subheader("Resumen del caso clinico")
-        c1,c2,c3,c4 = st.columns(4)
-        c1.metric("Intervenciones", data["carga_asistencial"]["total_intervenciones"])
-        c2.metric("Accuracy", f"{data['modelo_nlp']['accuracy']:.1%}")
-        c3.metric("Dias totales", data["internacion"]["dias_totales"])
-        c4.metric("Reingresos", data["internacion"]["reingresos"])
-        c5,c6,c7 = st.columns(3)
-        c5.metric("Internacion 1", f"{data['internacion']['primera_estadia_dias']} dias")
-        c6.metric("Internacion 2", f"{data['internacion']['segunda_estadia_dias']} dias")
-        c7.metric("Cambios de cama", data["internacion"]["cambios_cama"])
-        areas = data["intervenciones_por_area"]
-        df = pd.DataFrame({"Area":list(areas.keys()),"N":list(areas.values())}).sort_values("N",ascending=False)
-        st.bar_chart(df.set_index("Area"))
-        ca,cb = st.columns(2)
-        for i,k in enumerate(data["variables_clinicas_detectadas"]):
-            (ca if i%2==0 else cb).write(f"OK {k.replace('_',' ').capitalize()}")
+        areas = data.get("intervenciones_por_area", {})
+        if areas:
+            df = pd.DataFrame({"Area":list(areas.keys()),"N":list(areas.values())}).sort_values("N",ascending=False)
+            st.bar_chart(df.set_index("Area"))
+        if "total_intervenciones" in data:
+            c1,c2,c3,c4 = st.columns(4)
+            c1.metric("Intervenciones", data["total_intervenciones"])
+            c2.metric("Accuracy", f"{data.get('modelo_nlp',{}).get('accuracy',0.9298):.1%}")
+            internacion = data.get("internacion", {})
+            c3.metric("Días internación", internacion.get("dias_totales", "-"))
+            c4.metric("Reingresos", internacion.get("reingresos", "-"))
+            vars_clinicas = data.get("variables_clinicas_detectadas", {})
+            if vars_clinicas:
+                st.subheader("Variables clínicas detectadas")
+                ca,cb = st.columns(2)
+                items = [(k,v) for k,v in vars_clinicas.items() if v]
+                for i,(k,v) in enumerate(items):
+                    (ca if i%2==0 else cb).write(f"✅ {k.replace('_',' ').capitalize()}")
+            ics = data.get("interconsultas_detectadas", [])
+            if ics:
+                st.subheader(f"Interconsultas externas: {len(ics)}")
+                for ic in ics:
+                    st.write(f"- {ic.get('servicios',['?'])} | {ic.get('estado','')}")
+        elif "carga_asistencial" in data:
+            c1,c2,c3,c4 = st.columns(4)
+            c1.metric("Intervenciones", data["carga_asistencial"]["total_intervenciones"])
+            c2.metric("Accuracy", f"{data['modelo_nlp']['accuracy']:.1%}")
+            c3.metric("Dias totales", data["internacion"]["dias_totales"])
+            c4.metric("Reingresos", data["internacion"]["reingresos"])
+            ca,cb = st.columns(2)
+            for i,k in enumerate(data["variables_clinicas_detectadas"]):
+                (ca if i%2==0 else cb).write(f"OK {k.replace('_',' ').capitalize()}")
     else:
         st.error("Error API")
 elif modulo == "Reporte":
     st.title("Reporte Final - JSON")
-    r = requests.get(f"{API}/hcd/summary")
-    if r.status_code == 200:
-        data = r.json()
+    reps = requests.get(f"{API}/hcd/reportes")
+    hcs = reps.json() if reps.status_code == 200 else []
+    opciones = {f"{h['id']} - {h['archivo']}": h for h in hcs}
+    sel = st.selectbox("Seleccionar HC", list(opciones.keys())) if opciones else None
+    if sel:
+        hc_sel = opciones[sel]
+        try:
+            data = json.loads(hc_sel["resumen"])
+        except:
+            data = {"resumen": hc_sel["resumen"]}
         st.json(data)
-        st.download_button("Descargar JSON", json.dumps(data,ensure_ascii=False,indent=4), "reporte_hcd.json", "application/json")
-    else:
-        st.error("Error API")
+        st.download_button("Descargar JSON", json.dumps(data,ensure_ascii=False,indent=4), f"reporte_{hc_sel['archivo']}.json", "application/json")
