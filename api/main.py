@@ -194,17 +194,18 @@ def detectar_area_por_profesional(nombre_prof):
     return None  # externo = interconsulta
 
 REGLAS_IC = {
-    "interconsulta_inicial": ["se solicita interconsulta","interconsulta a ","requiere valoracion por","requiere valoración por","solicita ic","pide interconsulta","se pide ic","pendiente i/c","pendiente ic","pendiente interconsulta","i/c pendiente"],
+    "interconsulta_pendiente": ["pendiente i/c","pendiente ic","pendiente interc","pendiente interconsulta","i/c pendiente","ic pendiente"],
+    "interconsulta_inicial": ["se solicita interconsulta","interconsulta a ","requiere valoracion por","requiere valoración por","solicita ic","pide interconsulta","se pide ic"],
     "interconsulta_efectiva": ["evaluado por","valorado por","responde interconsulta","se responde interconsulta","se presenta servicio","fue evaluado","fue valorado","se realiza interconsulta","ic realizada","se realiza consulta","consulta nutricional","consulta por","interc.infecto","interc.nutri","interc."],
     "seguimiento": ["continua seguimiento","continúa seguimiento","revalua","reevalúa","seguimiento por","control por","nueva consulta por","segundo control"]
 }
 
 def clasificar_estado_ic(texto):
     t = texto.lower()
+    SCORES = {"interconsulta_efectiva": 5, "interconsulta_inicial": 4, "interconsulta_pendiente": 3, "seguimiento": 2}
     for estado, frases in REGLAS_IC.items():
         if any(f in t for f in frases):
-            score = 5 if estado == "interconsulta_efectiva" else 4 if estado == "interconsulta_inicial" else 2
-            return estado, score
+            return estado, SCORES.get(estado, 1)
     return "mencion_servicio", 0
 
 def detectar_ics(registros):
@@ -212,10 +213,27 @@ def detectar_ics(registros):
     for r in registros:
         t = r["texto"].lower()
         found = list(set([s for s in SERVICIOS_EXTERNOS if s in t]))
-        if found:
+        if not found:
+            continue
+        if len(found) >= 2:
+            # estado global del bloque (captura "se realiza interconsulta con X y Y")
+            estado_global, score_global = clasificar_estado_ic(r["texto"])
+            for servicio in found:
+                # ventana local para detectar si ESE servicio tiene estado propio
+                idx = t.find(servicio)
+                ventana = t[max(0, idx-120):idx+120]
+                estado_local, score_local = clasificar_estado_ic(ventana)
+                # si la ventana local no aporta nada, usar estado global
+                if estado_local == "mencion_servicio" and estado_global != "mencion_servicio":
+                    estado_final, score_final = estado_global, score_global
+                else:
+                    estado_final, score_final = estado_local, score_local
+                contar = estado_final in ["interconsulta_efectiva", "seguimiento"]
+                result.append({"servicios": [servicio], "estado_interconsulta": estado_final, "score": score_final, "contar": contar, "evidencia": r["texto"][:100], "texto": r["texto"][:200], "multi_evento": True})
+        else:
             estado, score = clasificar_estado_ic(r["texto"])
-            contar = estado != "mencion_servicio"
-            result.append({"servicios": found, "estado_interconsulta": estado, "score": score, "contar": contar, "evidencia": r["texto"][:100], "texto": r["texto"][:200]})
+            contar = estado in ["interconsulta_efectiva", "seguimiento"]
+            result.append({"servicios": found, "estado_interconsulta": estado, "score": score, "contar": contar, "evidencia": r["texto"][:100], "texto": r["texto"][:200], "multi_evento": False})
     return result
 
 @app.post("/hcd/procesar-modelo")
