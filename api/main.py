@@ -297,7 +297,7 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
                 "evidencia": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}",
                 "texto": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}"
             })
-    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
+    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
         (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
