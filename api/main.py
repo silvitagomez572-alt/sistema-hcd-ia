@@ -216,6 +216,7 @@ def limpiar_duplicados():
     return {"eliminados": eliminados}
 
 
+import hashlib
 import joblib
 import re as _re
 from collections import Counter
@@ -228,11 +229,50 @@ def get_modelo():
         _modelo_nlp = joblib.load("modelo_area_intervenciones.pkl")
     return _modelo_nlp
 
-def parsear_intervenciones(texto):
+def generar_id_intervencion(paciente_codigo, fecha, hora, area, tipo_bloque, texto):
+    fecha_str = (fecha or "").replace("/", "-")
+    hora_str = (hora or "").replace(":", "")
+    area_str = (area or "NOASIG").upper()
+    tipo_str = (tipo_bloque or "BLOQUE").upper()[:12].replace(" ", "_")
+    hash_corto = hashlib.md5(texto.encode("utf-8", errors="ignore")).hexdigest()[:6]
+    return f"{paciente_codigo}_{fecha_str}_{hora_str}_{area_str}_{tipo_str}_{hash_corto}"
+
+REGLAS_CONTEO = {
+    "CUENTA": [
+        "evolucion clinica","evolución clínica",
+        "nota de enfermeria","nota de enfermería",
+        "seguimiento",
+        "interconsulta inicial",
+        "reevaluacion","reevaluación",
+        "evaluacion psicologica","evaluación psicológica",
+        "evaluacion psiquiatrica","evaluación psiquiátrica",
+        "trabajo social",
+        "acompañamiento terapeutico","acompañamiento terapéutico",
+        "terapia ocupacional",
+    ],
+    "MIN_CHARS": 30,
+}
+
+def _criterio_conteo(registro, textos_vistos):
+    texto = registro["texto"]
+    tipo = (registro["tipo"] or "").lower()
+    if len(texto) < REGLAS_CONTEO["MIN_CHARS"]:
+        return {"cuenta": False, "motivo": "bloque menor a 30 caracteres", "regla_aplicada": "NO_CUENTA:min_chars"}
+    texto_norm = texto.strip().lower()
+    if texto_norm in textos_vistos:
+        return {"cuenta": False, "motivo": "duplicado exacto", "regla_aplicada": "NO_CUENTA:duplicado"}
+    textos_vistos.add(texto_norm)
+    for marcador in REGLAS_CONTEO["CUENTA"]:
+        if marcador in tipo or marcador in texto.lower()[:150]:
+            return {"cuenta": True, "motivo": f"marcador: {marcador}", "regla_aplicada": f"CUENTA:{marcador}"}
+    return {"cuenta": False, "motivo": "sin marcador clínico reconocido", "regla_aplicada": "NO_CUENTA:sin_marcador"}
+
+def parsear_intervenciones(texto, paciente_codigo="PAC-XXX"):
     import re
     patron = r'(\d{2}/\d{2}/\d{4})\s*-\s*(\d{2}:\d{2})\s*hs'
     marcadores = ["nota de enfermeria","nota de enfermería","evolucion clinica","evolución clínica","seguimiento","diagnostico","diagnóstico","indicacion","indicación","motivo de consulta"]
     registros = []
+    textos_vistos = set()
     fecha_actual = hora_actual = None
     bloque = tipo = ""
     fb = hb = None
@@ -245,12 +285,18 @@ def parsear_intervenciones(texto):
             continue
         if any(x in linea.lower() for x in marcadores):
             if bloque:
-                registros.append({"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()})
+                r = {"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()}
+                r["id_intervencion"] = generar_id_intervencion(paciente_codigo, fb, hb, "NOASIG", tipo, bloque.strip())
+                r["criterio_conteo"] = _criterio_conteo(r, textos_vistos)
+                registros.append(r)
             bloque = linea; tipo = linea; fb = fecha_actual; hb = hora_actual
         else:
             if bloque: bloque += " " + linea
     if bloque:
-        registros.append({"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()})
+        r = {"fecha": fb, "hora": hb, "tipo": tipo, "texto": bloque.strip()}
+        r["id_intervencion"] = generar_id_intervencion(paciente_codigo, fb, hb, "NOASIG", tipo, bloque.strip())
+        r["criterio_conteo"] = _criterio_conteo(r, textos_vistos)
+        registros.append(r)
     return registros
 
 PROFESIONALES_SALUD_MENTAL = {
@@ -417,19 +463,20 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
         dias_internacion = 0
     reingresos = texto.lower().count("internación - hospital") + texto.lower().count("internacion - hospital")
     cambios_cama = texto.lower().count("pase de cama")
-    registros = parsear_intervenciones(texto)
+    pac_codigo = _re.sub(r'[^A-Za-z0-9]', '', archivo.filename)[:10].upper() or "PAC"
+    registros = parsear_intervenciones(texto, pac_codigo)
     if not registros:
         return {"error": "Sin intervenciones", "archivo": archivo.filename}
     modelo = joblib.load("modelo_area_intervenciones.pkl")
     areas_detalle = []
     for r in registros:
-        # extraer nombre profesional del bloque si existe
-        import re as _re
         m = _re.search(r'Profesional:\s*([A-ZÁÉÍÓÚÑ][^\n]+)', r["texto"])
         nombre_prof = m.group(1).strip() if m else None
         area, regla = clasificar_area_hibrido(r["texto"], nombre_prof, modelo)
-        areas_detalle.append({"area": area, "regla": regla, "texto": r["texto"][:80]})
-    conteo = dict(Counter([a["area"] for a in areas_detalle]))
+        r["id_intervencion"] = generar_id_intervencion(pac_codigo, r["fecha"], r["hora"], area, r["tipo"], r["texto"])
+        areas_detalle.append({"area": area, "regla": regla, "texto": r["texto"][:80],
+                              "id": r["id_intervencion"], "cuenta": r["criterio_conteo"]["cuenta"]})
+    conteo = dict(Counter([a["area"] for a in areas_detalle if a["cuenta"]]))
     variables_dict = {
         "ideacion_autolitica": ["ideacion","ideas de muerte","ideas suicidas","autolesion","intento de suicidio","autolisis"],
         "alucinaciones": ["alucinac","voces","escucha voces"],
@@ -482,7 +529,8 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
                 "evidencia": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}",
                 "texto": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}"
             })
-    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "detalle_clasificacion": areas_detalle[:30], "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
+    total_contadas = sum(1 for r in registros if r.get("criterio_conteo", {}).get("cuenta", False))
+    resumen = {"archivo": archivo.filename, "total_intervenciones": total_contadas, "total_registros_raw": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros if r.get("criterio_conteo", {}).get("cuenta", False)])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "detalle_clasificacion": areas_detalle[:30], "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
         (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
