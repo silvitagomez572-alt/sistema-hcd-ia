@@ -98,63 +98,135 @@ elif modulo == "Interconsultas HCD":
         except:
             st.info("Esta HC no tiene interconsultas estructuradas.")
 elif modulo == "Metricas HCD":
-    st.title("Metricas del Sistema HCD")
+    st.title("Métricas del Sistema HCD")
+    import altair as alt
+
+    # Datos frescos desde SQLite via endpoint (no JSON maestro cacheado)
     reps = requests.get(f"{API}/hcd/reportes")
-    hcs = reps.json() if reps.status_code == 200 else []
-    opciones = {f"{h['id']} - {h['archivo']}": h for h in hcs}
-    seleccion = st.selectbox("Seleccionar HC", list(opciones.keys())) if opciones else None
-    if seleccion:
-        hc_sel = opciones[seleccion]
+    hcs_raw = reps.json() if reps.status_code == 200 else []
+
+    # Deduplicar en memoria: quedarse con el registro más reciente por archivo
+    seen_arch = {}
+    for h in hcs_raw:
+        if h["archivo"] not in seen_arch:
+            seen_arch[h["archivo"]] = h
+    hcs = list(seen_arch.values())
+
+    n_dups = len(hcs_raw) - len(hcs)
+    if n_dups > 0:
+        st.warning(f"{n_dups} registro(s) duplicado(s) detectado(s).")
+        if st.button("Limpiar duplicados en BD"):
+            r_del = requests.delete(f"{API}/hcd/reportes/duplicados")
+            if r_del.status_code == 200:
+                st.success(f"Eliminados: {r_del.json()['eliminados']}")
+                st.rerun()
+
+    if not hcs:
+        st.warning("No hay HCs procesadas aún.")
+        st.stop()
+
+    # Selector de HC
+    opciones = {"— Todas las HCs —": None}
+    opciones.update({f"{h['id']} - {h['archivo']}": h for h in hcs})
+    seleccion = st.selectbox("Seleccionar HC", list(opciones.keys()))
+    hc_sel = opciones[seleccion]
+
+    # Construir datos: agregar todas o mostrar una sola
+    ics_all = []
+    if hc_sel is None:
+        areas_total, total_int, reingresos, cambios, dias_list = {}, 0, 0, 0, []
+        for h in hcs:
+            try:
+                d = json.loads(h["resumen"])
+                for k, v in d.get("intervenciones_por_area", {}).items():
+                    areas_total[k] = areas_total.get(k, 0) + v
+                total_int += d.get("total_intervenciones", 0)
+                intern = d.get("internacion", {})
+                reingresos += intern.get("reingresos", 0)
+                cambios += intern.get("cambios_cama", 0)
+                if intern.get("dias_totales"):
+                    dias_list.append(intern["dias_totales"])
+                for ic in d.get("interconsultas_detectadas", []):
+                    for svc in ic.get("servicios", []):
+                        ics_all.append({"HC": h["archivo"], "Servicio": svc,
+                            "Estado": ic.get("estado_interconsulta", ""),
+                            "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
+            except:
+                pass
+        data = {"intervenciones_por_area": areas_total, "total_intervenciones": total_int,
+                "internacion": {"dias_totales": round(sum(dias_list)/len(dias_list)) if dias_list else 0,
+                                "reingresos": reingresos, "cambios_cama": cambios},
+                "modelo_nlp": {"accuracy": 0.9298}}
+        vars_clinicas = {}
+    else:
         try:
             data = json.loads(hc_sel["resumen"])
         except:
-            st.info(hc_sel["resumen"])
-            data = None
+            st.error("No se pudo leer el resumen de esta HC.")
+            st.stop()
+        vars_clinicas = data.get("variables_clinicas_detectadas", {})
+        for ic in data.get("interconsultas_detectadas", []):
+            for svc in ic.get("servicios", []):
+                ics_all.append({"HC": hc_sel["archivo"], "Servicio": svc,
+                    "Estado": ic.get("estado_interconsulta", ""),
+                    "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
+
+    # Métricas resumen
+    c1, c2, c3, c4 = st.columns(4)
+    internacion = data.get("internacion", {})
+    c1.metric("Intervenciones", data.get("total_intervenciones", "-"))
+    c2.metric("Accuracy modelo", f"{data.get('modelo_nlp', {}).get('accuracy', 0.9298):.1%}")
+    c3.metric("Días internación" if hc_sel else "Días prom.", internacion.get("dias_totales", "-"))
+    c4.metric("Reingresos", internacion.get("reingresos", "-"))
+
+    # Dos gráficos separados: áreas mayoritarias y minoritarias
+    MAYORITARIAS = {"enfermeria", "psicologia"}
+    areas = data.get("intervenciones_por_area", {})
+    df_may = pd.DataFrame([{"Area": k, "N": v} for k, v in areas.items() if k in MAYORITARIAS]).sort_values("N", ascending=False)
+    df_min = pd.DataFrame([{"Area": k, "N": v} for k, v in areas.items() if k not in MAYORITARIAS]).sort_values("N", ascending=False)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Áreas mayoritarias")
+        if not df_may.empty:
+            ch = alt.Chart(df_may).mark_bar(color="#4C78A8").encode(
+                x=alt.X("N:Q", title="Intervenciones"),
+                y=alt.Y("Area:N", sort="-x", title=""),
+                tooltip=["Area", "N"]
+            ).properties(height=110)
+            lb = alt.Chart(df_may).mark_text(align="left", dx=3, fontSize=13).encode(
+                x="N:Q", y=alt.Y("Area:N", sort="-x"), text="N:Q"
+            )
+            st.altair_chart(ch + lb, use_container_width=True)
+    with col2:
+        st.subheader("Áreas minoritarias")
+        if not df_min.empty:
+            ch = alt.Chart(df_min).mark_bar(color="#F58518").encode(
+                x=alt.X("N:Q", title="Intervenciones"),
+                y=alt.Y("Area:N", sort="-x", title=""),
+                tooltip=["Area", "N"]
+            ).properties(height=max(160, len(df_min) * 38))
+            lb = alt.Chart(df_min).mark_text(align="left", dx=3, fontSize=13).encode(
+                x="N:Q", y=alt.Y("Area:N", sort="-x"), text="N:Q"
+            )
+            st.altair_chart(ch + lb, use_container_width=True)
+
+    # Variables clínicas (solo HC individual)
+    if vars_clinicas:
+        presentes = [(k, v) for k, v in vars_clinicas.items() if v]
+        if presentes:
+            st.subheader("Variables clínicas detectadas")
+            ca, cb = st.columns(2)
+            for i, (k, _) in enumerate(presentes):
+                (ca if i % 2 == 0 else cb).write(f"✅ {k.replace('_', ' ').capitalize()}")
+
+    # Interconsultas de todas las HCs procesadas
+    st.subheader(f"Interconsultas externas ({len(ics_all)})")
+    if ics_all:
+        df_ics = pd.DataFrame(ics_all).sort_values(["Score", "Contar"], ascending=[False, False])
+        st.dataframe(df_ics, use_container_width=True, hide_index=True)
     else:
-        data = None
-    r = requests.get(f"{API}/hcd/metricas")
-    if seleccion and data is None:
-        st.warning("Esta HC fue procesada por IA - ver resumen arriba")
-    elif seleccion and data is not None and r.status_code == 200:
-        pass
-    elif r.status_code == 200 and not seleccion:
-        data = r.json()
-    if data is not None:
-        st.subheader("Resumen del caso clinico")
-        areas = data.get("intervenciones_por_area", {})
-        if areas:
-            df = pd.DataFrame({"Area":list(areas.keys()),"N":list(areas.values())}).sort_values("N",ascending=False)
-            st.bar_chart(df.set_index("Area"))
-        if "total_intervenciones" in data:
-            c1,c2,c3,c4 = st.columns(4)
-            c1.metric("Intervenciones", data["total_intervenciones"])
-            c2.metric("Accuracy", f"{data.get('modelo_nlp',{}).get('accuracy',0.9298):.1%}")
-            internacion = data.get("internacion", {})
-            c3.metric("Días internación", internacion.get("dias_totales", "-"))
-            c4.metric("Reingresos", internacion.get("reingresos", "-"))
-            vars_clinicas = data.get("variables_clinicas_detectadas", {})
-            if vars_clinicas:
-                st.subheader("Variables clínicas detectadas")
-                ca,cb = st.columns(2)
-                items = [(k,v) for k,v in vars_clinicas.items() if v]
-                for i,(k,v) in enumerate(items):
-                    (ca if i%2==0 else cb).write(f"✅ {k.replace('_',' ').capitalize()}")
-            ics = data.get("interconsultas_detectadas", [])
-            if ics:
-                st.subheader(f"Interconsultas externas: {len(ics)}")
-                for ic in ics:
-                    st.write(f"- {ic.get('servicios',['?'])} | {ic.get('estado','')}")
-        elif "carga_asistencial" in data:
-            c1,c2,c3,c4 = st.columns(4)
-            c1.metric("Intervenciones", data["carga_asistencial"]["total_intervenciones"])
-            c2.metric("Accuracy", f"{data['modelo_nlp']['accuracy']:.1%}")
-            c3.metric("Dias totales", data["internacion"]["dias_totales"])
-            c4.metric("Reingresos", data["internacion"]["reingresos"])
-            ca,cb = st.columns(2)
-            for i,k in enumerate(data["variables_clinicas_detectadas"]):
-                (ca if i%2==0 else cb).write(f"OK {k.replace('_',' ').capitalize()}")
-    else:
-        st.error("Error API")
+        st.info("No se detectaron interconsultas externas.")
 elif modulo == "Reporte":
     st.title("Reporte Final - JSON")
     reps = requests.get(f"{API}/hcd/reportes")

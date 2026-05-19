@@ -134,6 +134,18 @@ def get_reportes():
     con.close()
     return [{"id": r[0], "archivo": r[1], "resumen": r[2], "fecha": r[3]} for r in rows]
 
+@app.delete("/hcd/reportes/duplicados")
+def limpiar_duplicados():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("""
+        DELETE FROM hcs_procesadas
+        WHERE id NOT IN (SELECT MAX(id) FROM hcs_procesadas GROUP BY archivo)
+    """)
+    eliminados = con.total_changes
+    con.commit()
+    con.close()
+    return {"eliminados": eliminados}
+
 
 import joblib
 import re as _re
