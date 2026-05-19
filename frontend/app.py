@@ -120,20 +120,18 @@ elif modulo == "Interconsultas HCD":
             score = ic.get("score", 0)
             contar = ic.get("contar", False)
             evidencia = ic.get("evidencia", ic.get("texto", ""))
-            emoji, color = ESTADO_COLOR.get(estado, ("⚪", "secondary"))
+            emoji, _ = ESTADO_COLOR.get(estado, ("⚪", "secondary"))
             svc_label = ", ".join(s.upper() for s in svcs) if svcs else "SERVICIO"
-            contar_label = "✔ cuenta" if contar else "✘ no cuenta"
+            contar_label = "cuenta" if contar else "no cuenta"
 
-            if color == "success":
-                st.success(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
-            elif color == "warning":
-                st.warning(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
-            elif color == "info":
-                st.info(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
-            else:
-                st.markdown(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
-            if evidencia:
-                st.caption(f"↳ {evidencia[:120]}")
+            with st.container():
+                c1, c2, c3, c4 = st.columns([3, 4, 1, 2])
+                c1.write(f"{emoji} {svc_label}")
+                c2.write(estado.replace("_", " "))
+                c3.write(f"score {score}")
+                c4.write(contar_label)
+                if evidencia:
+                    st.caption(f"↳ {evidencia[:120]}")
 
         st.divider()
 elif modulo == "Metricas HCD":
