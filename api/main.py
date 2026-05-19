@@ -320,11 +320,15 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     # Extraer metricas del cronologico
     import re as re2
     fechas = re2.findall(r'(\d{2}/\d{2}/\d{4})', texto)
-    if fechas:
+    # VADIGU inserta en el header las 2 primeras fechas como rango del reporte
+    # (siempre 6 meses = 181 días). Se saltean para usar fechas clínicas reales.
+    fechas_clinicas = fechas[2:] if len(fechas) > 2 else fechas
+    if fechas_clinicas:
         import datetime as dt_module
         try:
-            fecha_ini = dt_module.datetime.strptime(fechas[0], "%d/%m/%Y")
-            fecha_fin = dt_module.datetime.strptime(fechas[-1], "%d/%m/%Y")
+            fechas_dt = [dt_module.datetime.strptime(f, "%d/%m/%Y") for f in fechas_clinicas]
+            fecha_ini = min(fechas_dt)
+            fecha_fin = max(fechas_dt)
             dias_internacion = (fecha_fin - fecha_ini).days
         except:
             dias_internacion = 0
