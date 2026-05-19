@@ -135,6 +135,74 @@ def get_reportes():
     return [{"id": r[0], "archivo": r[1], "resumen": r[2], "fecha": r[3],
              "codigo_paciente": f"PAC-{r[0]:03d}"} for r in rows]
 
+@app.get("/hcd/reporte-total")
+def reporte_total():
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas ORDER BY id").fetchall()
+    con.close()
+
+    casos, areas_global, vars_global, ics_por_estado = [], {}, {}, {}
+    total_intervenciones = total_dias = total_reingresos = 0
+    dias_list = []
+
+    for r in rows:
+        try:
+            d = json.loads(r[2])
+        except:
+            continue
+        codigo = f"PAC-{r[0]:03d}"
+        intern = d.get("internacion", {})
+        dias = intern.get("dias_totales", 0)
+        if dias:
+            dias_list.append(dias)
+        total_intervenciones += d.get("total_intervenciones", 0)
+        total_reingresos += intern.get("reingresos", 0)
+
+        areas = d.get("intervenciones_por_area", {})
+        for k, v in areas.items():
+            areas_global[k] = areas_global.get(k, 0) + v
+
+        vars_c = d.get("variables_clinicas_detectadas", {})
+        for k, v in vars_c.items():
+            if v:
+                vars_global[k] = vars_global.get(k, 0) + 1
+
+        area_principal = max(areas, key=areas.get) if areas else "-"
+        ics = d.get("interconsultas_detectadas", [])
+        ics_efectivas = [ic for ic in ics if ic.get("contar")]
+        for ic in ics:
+            estado = ic.get("estado_interconsulta", "otro")
+            ics_por_estado[estado] = ics_por_estado.get(estado, 0) + len(ic.get("servicios", [1]))
+
+        vars_presentes = [k for k, v in vars_c.items() if v]
+        casos.append({
+            "codigo_paciente": codigo,
+            "fecha": r[3][:10],
+            "total_intervenciones": d.get("total_intervenciones", 0),
+            "dias_internacion": dias,
+            "reingresos": intern.get("reingresos", 0),
+            "area_principal": area_principal,
+            "intervenciones_por_area": areas,
+            "variables_clinicas_presentes": vars_presentes,
+            "interconsultas_efectivas": len(ics_efectivas),
+            "interconsultas_total": len(ics),
+        })
+
+    n = len(casos)
+    return {
+        "resumen_ejecutivo": {
+            "total_pacientes": n,
+            "total_intervenciones": total_intervenciones,
+            "promedio_intervenciones_por_paciente": round(total_intervenciones / n, 1) if n else 0,
+            "promedio_dias_internacion": round(sum(dias_list) / len(dias_list), 1) if dias_list else 0,
+            "total_reingresos": total_reingresos,
+            "intervenciones_por_area": areas_global,
+        },
+        "variables_clinicas_por_frecuencia": dict(sorted(vars_global.items(), key=lambda x: -x[1])),
+        "interconsultas_por_estado": ics_por_estado,
+        "casos": casos,
+    }
+
 @app.delete("/hcd/reportes/duplicados")
 def limpiar_duplicados():
     con = sqlite3.connect(DB_PATH)

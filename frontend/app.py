@@ -6,7 +6,7 @@ import json
 API = "http://localhost:8001"
 st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
-modulo = st.sidebar.radio("Modulo", ["Ingresar HC","Extraccion OCR","Pseudonimizacion","Modelo NLP","Base de Conocimiento","Interconsultas HCD","Metricas HCD","Reporte"])
+modulo = st.sidebar.radio("Modulo", ["Ingresar HC","Extraccion OCR","Pseudonimizacion","Modelo NLP","Base de Conocimiento","Interconsultas HCD","Metricas HCD","Resumen HCs","Reporte"])
 
 if modulo == "Ingresar HC":
     st.title("Ingresar Historia Clinica")
@@ -266,6 +266,100 @@ elif modulo == "Metricas HCD":
         st.dataframe(df_ics, use_container_width=True, hide_index=True)
     else:
         st.info("No se detectaron interconsultas externas.")
+elif modulo == "Resumen HCs":
+    st.title("Resumen comparativo de HCs procesadas")
+
+    r = requests.get(f"{API}/hcd/reporte-total")
+    if r.status_code != 200:
+        st.error("Error al obtener reporte total.")
+        st.stop()
+    reporte = r.json()
+    resumen = reporte["resumen_ejecutivo"]
+    casos = reporte["casos"]
+    vars_freq = reporte["variables_clinicas_por_frecuencia"]
+    ics_estado = reporte["interconsultas_por_estado"]
+
+    # KPIs ejecutivos
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Pacientes", resumen["total_pacientes"])
+    c2.metric("Intervenciones totales", resumen["total_intervenciones"])
+    c3.metric("Prom. intervenciones", resumen["promedio_intervenciones_por_paciente"])
+    c4.metric("Prom. días internación", resumen["promedio_dias_internacion"])
+    c5.metric("Reingresos", resumen["total_reingresos"])
+
+    # Tabla comparativa
+    st.subheader("Tabla comparativa por paciente")
+    filas = []
+    for c in casos:
+        areas = c["intervenciones_por_area"]
+        area_top2 = ", ".join(
+            f"{k}({v})" for k, v in sorted(areas.items(), key=lambda x: -x[1])[:2]
+        )
+        filas.append({
+            "Paciente": c["codigo_paciente"],
+            "Días intern.": c["dias_internacion"],
+            "Intervenciones": c["total_intervenciones"],
+            "Área principal": c["area_principal"],
+            "Top 2 áreas": area_top2,
+            "Variables clínicas": len(c["variables_clinicas_presentes"]),
+            "ICs efectivas": c["interconsultas_efectivas"],
+            "ICs total": c["interconsultas_total"],
+            "Reingresos": c["reingresos"],
+        })
+    df_tabla = pd.DataFrame(filas)
+    st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+
+    # Variables clínicas: frecuencia entre pacientes
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Variables clínicas por frecuencia")
+        if vars_freq:
+            import altair as alt
+            df_vars = pd.DataFrame({"Variable": list(vars_freq.keys()), "Pacientes": list(vars_freq.values())})
+            df_vars["Variable"] = df_vars["Variable"].str.replace("_", " ").str.capitalize()
+            ch = alt.Chart(df_vars).mark_bar(color="#72B7B2").encode(
+                x=alt.X("Pacientes:Q", title="N° pacientes"),
+                y=alt.Y("Variable:N", sort="-x", title=""),
+                tooltip=["Variable", "Pacientes"]
+            ).properties(height=max(200, len(df_vars) * 28))
+            lb = alt.Chart(df_vars).mark_text(align="left", dx=3).encode(
+                x="Pacientes:Q", y=alt.Y("Variable:N", sort="-x"), text="Pacientes:Q"
+            )
+            st.altair_chart(ch + lb, use_container_width=True)
+
+    with col2:
+        st.subheader("Interconsultas por estado")
+        if ics_estado:
+            df_ics = pd.DataFrame({"Estado": list(ics_estado.keys()), "Total": list(ics_estado.values())})
+            df_ics["Estado"] = df_ics["Estado"].str.replace("_", " ").str.capitalize()
+            ch2 = alt.Chart(df_ics).mark_bar(color="#E45756").encode(
+                x=alt.X("Total:Q", title="Total"),
+                y=alt.Y("Estado:N", sort="-x", title=""),
+                tooltip=["Estado", "Total"]
+            ).properties(height=max(160, len(df_ics) * 35))
+            lb2 = alt.Chart(df_ics).mark_text(align="left", dx=3).encode(
+                x="Total:Q", y=alt.Y("Estado:N", sort="-x"), text="Total:Q"
+            )
+            st.altair_chart(ch2 + lb2, use_container_width=True)
+
+    # Variables clínicas presentes por paciente (detalle)
+    st.subheader("Variables clínicas presentes por paciente")
+    det_filas = []
+    for c in casos:
+        for v in c["variables_clinicas_presentes"]:
+            det_filas.append({"Paciente": c["codigo_paciente"], "Variable": v.replace("_", " ").capitalize()})
+    if det_filas:
+        st.dataframe(pd.DataFrame(det_filas), use_container_width=True, hide_index=True)
+
+    # Descarga JSON para el director
+    st.subheader("Exportar reporte ejecutivo")
+    st.download_button(
+        "Descargar JSON completo",
+        json.dumps(reporte, ensure_ascii=False, indent=2),
+        "reporte_total_hcd.json",
+        "application/json"
+    )
+
 elif modulo == "Reporte":
     st.title("Reporte Final - JSON")
     reps = requests.get(f"{API}/hcd/reportes")
