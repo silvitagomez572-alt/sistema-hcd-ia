@@ -23,9 +23,7 @@ if modulo == "Ingresar HC":
                         data = r.json()
                         st.success("HC procesada correctamente")
                         st.markdown("### Resumen IA")
-                        st.write(data["resumen"])
-                        with st.expander("Texto extraido"):
-                            st.write(data["texto_extraido"])
+                        st.json({k: v for k, v in data.items() if k != "texto_extraido"})
                     else:
                         st.error(f"Error: {r.status_code}")
                 except Exception as e:
@@ -98,13 +96,13 @@ elif modulo == "Interconsultas HCD":
         st.warning("No hay HCs procesadas.")
         st.stop()
 
-    opciones = {"— Todas las HCs —": None}
-    opciones.update({f"{h['nombre_paciente'] or h['archivo']}": h for h in hcs})
+    opciones = {"— Todos los pacientes —": None}
+    opciones.update({h["codigo_paciente"]: h for h in hcs})
     sel = st.selectbox("Seleccionar paciente", list(opciones.keys()))
     hcs_mostrar = hcs if opciones[sel] is None else [opciones[sel]]
 
     for h in hcs_mostrar:
-        nombre = h.get("nombre_paciente") or h["archivo"]
+        codigo = h["codigo_paciente"]
         try:
             data = json.loads(h["resumen"])
         except:
@@ -113,8 +111,8 @@ elif modulo == "Interconsultas HCD":
         if not ics:
             continue
 
-        st.markdown(f"### 👤 {nombre}")
-        st.caption(f"Archivo: {h['archivo']} · {h['fecha'][:10]}")
+        st.markdown(f"### 👤 {codigo}")
+        st.caption(f"Fecha: {h['fecha'][:10]}")
 
         for ic in ics:
             svcs = ic.get("servicios", [])
@@ -168,7 +166,7 @@ elif modulo == "Metricas HCD":
 
     # Selector de HC
     opciones = {"— Todas las HCs —": None}
-    opciones.update({f"{h['nombre_paciente'] or h['archivo']}": h for h in hcs})
+    opciones.update({h["codigo_paciente"]: h for h in hcs})
     seleccion = st.selectbox("Seleccionar HC", list(opciones.keys()))
     hc_sel = opciones[seleccion]
 
@@ -189,7 +187,7 @@ elif modulo == "Metricas HCD":
                     dias_list.append(intern["dias_totales"])
                 for ic in d.get("interconsultas_detectadas", []):
                     for svc in ic.get("servicios", []):
-                        ics_all.append({"Paciente": h.get("nombre_paciente") or h["archivo"],
+                        ics_all.append({"Paciente": h["codigo_paciente"],
                             "Servicio": svc, "Estado": ic.get("estado_interconsulta", ""),
                             "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
             except:
@@ -208,7 +206,7 @@ elif modulo == "Metricas HCD":
         vars_clinicas = data.get("variables_clinicas_detectadas", {})
         for ic in data.get("interconsultas_detectadas", []):
             for svc in ic.get("servicios", []):
-                ics_all.append({"Paciente": hc_sel.get("nombre_paciente") or hc_sel["archivo"],
+                ics_all.append({"Paciente": hc_sel["codigo_paciente"],
                     "Servicio": svc, "Estado": ic.get("estado_interconsulta", ""),
                     "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
 
