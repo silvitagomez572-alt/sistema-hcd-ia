@@ -292,7 +292,8 @@ elif modulo == "Metricas HCD":
     else:
         st.info("No se detectaron interconsultas externas.")
 elif modulo == "Resumen HCs":
-    st.title("Resumen comparativo de HCs procesadas")
+    st.title("Reporte Bioestadístico Automatizado — HCD IA")
+    st.caption("Detección automatizada preliminar en validación. Resultados sujetos a revisión humana.")
 
     r = requests.get(f"{API}/hcd/reporte-total")
     if r.status_code != 200:
