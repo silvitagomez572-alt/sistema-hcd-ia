@@ -107,7 +107,7 @@ Responde de forma estructurada y breve."""
             (archivo.filename, resumen, texto[:500], datetime.datetime.now().isoformat()))
         con.commit()
         con.close()
-        return {"archivo": archivo.filename, "resumen": resumen, "texto_extraido": texto[:500]}
+        return {"archivo": archivo.filename, "resumen": resumen}
 
 import sqlite3, datetime
 
@@ -127,24 +127,13 @@ def init_db():
 
 init_db()
 
-def _extraer_nombre(texto_extraido: str) -> str:
-    if not texto_extraido:
-        return ""
-    lineas = texto_extraido.strip().split("\n")
-    for i, linea in enumerate(lineas):
-        if "Cronológico del paciente" in linea and i + 1 < len(lineas):
-            nombre = lineas[i + 1].strip()
-            if nombre and nombre[0].isupper():
-                return nombre
-    return ""
-
 @app.get("/hcd/reportes")
 def get_reportes():
     con = sqlite3.connect(DB_PATH)
-    rows = con.execute("SELECT id, archivo, resumen, fecha, texto_extraido FROM hcs_procesadas ORDER BY fecha DESC").fetchall()
+    rows = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas ORDER BY fecha DESC").fetchall()
     con.close()
     return [{"id": r[0], "archivo": r[1], "resumen": r[2], "fecha": r[3],
-             "nombre_paciente": _extraer_nombre(r[4] or "")} for r in rows]
+             "codigo_paciente": f"PAC-{r[0]:03d}"} for r in rows]
 
 @app.delete("/hcd/reportes/duplicados")
 def limpiar_duplicados():
