@@ -189,9 +189,14 @@ elif modulo == "Metricas HCD":
         for h in hcs:
             try:
                 d = json.loads(h["resumen"])
-                for k, v in d.get("intervenciones_por_area", {}).items():
-                    areas_total[k] = areas_total.get(k, 0) + v
-                total_int += d.get("total_intervenciones", 0)
+                total_pac = d.get("total_intervenciones", 0)
+                areas = d.get("intervenciones_por_area", {})
+                # Incluir áreas solo cuando son consistentes con el total validado
+                # (registros stale tienen total_intervenciones=0 pero áreas infladas)
+                if sum(areas.values()) == total_pac:
+                    for k, v in areas.items():
+                        areas_total[k] = areas_total.get(k, 0) + v
+                total_int += total_pac
                 intern = d.get("internacion", {})
                 reingresos += intern.get("reingresos", 0)
                 cambios += intern.get("cambios_cama", 0)
@@ -312,7 +317,7 @@ elif modulo == "Metricas HCD":
         else:
             st.info("Sin datos.")
 
-    st.caption("Las barras representan conteos automatizados de intervenciones o menciones por área. Los resultados se encuentran en etapa de validación y pueden requerir revisión manual.")
+    st.caption("Los gráficos por área se calculan sobre intervenciones válidas clasificadas por área profesional. No incluyen bloques descartados ni duplicados.")
 
     ETIQUETAS_VARIABLES = {
         "delirio_psicosis":        "Desorganización del pensamiento",
