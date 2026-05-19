@@ -193,6 +193,82 @@ def detectar_area_por_profesional(nombre_prof):
             return area
     return None  # externo = interconsulta
 
+REGLAS_AREA_TEXTO = {
+    "acompanante_terapeutico": [
+        "acompañante terapeutico","acompañante terapéutico","acomp. terapeutico",
+        "acomp.terapeutico","at ","a.t.","tarea de at","rol del at","actividad con at",
+        "acompañamiento terapeutico","acompañamiento terapéutico"
+    ],
+    "terapia_ocupacional": [
+        "terapia ocupacional","terapista ocupacional","t.o.","to ","terapeuta ocupacional",
+        "taller de to","actividad de to","espacio de to","taller ocupacional",
+        "actividades de la vida diaria","avd","actividades ocupacionales"
+    ],
+    "psiquiatria": [
+        "psiquiatria","psiquiatría","psiquiatra","guardia de psiquiatria",
+        "indicacion psiquiatrica","indicación psiquiátrica","psiq."
+    ],
+    "psicologia": [
+        "psicologia","psicología","psicologa","psicólogo","psicóloga",
+        "espacio psicologico","espacio psicológico","intervencion psicologica"
+    ],
+    "trabajo_social": [
+        "trabajo social","trabajadora social","trabajador social","ts ","t.s.",
+        "informe social","visita domiciliaria","red vincular","recurso social",
+        "situacion social","situación social"
+    ],
+    "enfermeria": [
+        "nota de enfermeria","nota de enfermería","control de signos vitales",
+        "signos vitales","tension arterial","saturacion","medicada","medicado",
+        "via oral","v.o.","guardia de enfermeria","turno de enfermeria"
+    ],
+    "psicopedagogia": [
+        "psicopedagogia","psicopedagogía","psicopedagoga","evaluacion psicopedagogica"
+    ]
+}
+
+MODELO_A_AREA = {
+    "Enfermería": "enfermeria",
+    "Psicología": "psicologia",
+    "Psiquiatría": "psiquiatria",
+    "Trabajo Social": "trabajo_social",
+    "Otros": "otros"
+}
+
+def clasificar_area_hibrido(texto, nombre_profesional=None, modelo_nlp=None):
+    """
+    Clasificador híbrido con 4 capas:
+    1. Diccionario profesional (firma)
+    2. Reglas por texto/encabezado
+    3. Modelo NLP
+    4. Fallback otros
+    Devuelve: (area, regla_disparada)
+    """
+    t = texto.lower()
+
+    # CAPA 1: diccionario por nombre de profesional
+    if nombre_profesional:
+        area = detectar_area_por_profesional(nombre_profesional)
+        if area:
+            return area, f"diccionario_profesional:{nombre_profesional}"
+
+    # CAPA 2: reglas por texto
+    for area, keywords in REGLAS_AREA_TEXTO.items():
+        for kw in keywords:
+            if kw in t:
+                return area, f"regla_texto:{kw}"
+
+    # CAPA 3: modelo NLP
+    if modelo_nlp is not None:
+        try:
+            pred = modelo_nlp.predict([texto])[0]
+            area_mapped = MODELO_A_AREA.get(pred, "otros")
+            return area_mapped, f"modelo_nlp:{pred}"
+        except:
+            pass
+
+    return "otros", "fallback"
+
 REGLAS_IC = {
     "interconsulta_pendiente": ["pendiente i/c","pendiente ic","pendiente interc","pendiente interconsulta","i/c pendiente","ic pendiente"],
     "interconsulta_inicial": ["se solicita interconsulta","interconsulta a ","requiere valoracion por","requiere valoración por","solicita ic","pide interconsulta","se pide ic"],
@@ -260,9 +336,15 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     if not registros:
         return {"error": "Sin intervenciones", "archivo": archivo.filename}
     modelo = joblib.load("modelo_area_intervenciones.pkl")
-    textos = [r["texto"] for r in registros]
-    areas = modelo.predict(textos)
-    conteo = dict(Counter(areas))
+    areas_detalle = []
+    for r in registros:
+        # extraer nombre profesional del bloque si existe
+        import re as _re
+        m = _re.search(r'Profesional:\s*([A-ZÁÉÍÓÚÑ][^\n]+)', r["texto"])
+        nombre_prof = m.group(1).strip() if m else None
+        area, regla = clasificar_area_hibrido(r["texto"], nombre_prof, modelo)
+        areas_detalle.append({"area": area, "regla": regla, "texto": r["texto"][:80]})
+    conteo = dict(Counter([a["area"] for a in areas_detalle]))
     variables_dict = {
         "ideacion_autolitica": ["ideacion","ideas de muerte","ideas suicidas","autolesion","intento de suicidio","autolisis"],
         "alucinaciones": ["alucinac","voces","escucha voces"],
@@ -315,7 +397,7 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
                 "evidencia": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}",
                 "texto": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}"
             })
-    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
+    resumen = {"archivo": archivo.filename, "total_intervenciones": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "detalle_clasificacion": areas_detalle[:30], "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
         (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
