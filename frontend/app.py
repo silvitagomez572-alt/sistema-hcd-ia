@@ -229,37 +229,70 @@ elif modulo == "Metricas HCD":
     c3.metric("Días internación" if hc_sel else "Días prom.", internacion.get("dias_totales", "-"))
     c4.metric("Reingresos", internacion.get("reingresos", "-"))
 
-    # Dos gráficos separados: áreas mayoritarias y minoritarias
-    MAYORITARIAS = {"enfermeria", "psicologia"}
+    # Tres gráficos: SM mayoritarias / SM minoritarias / Servicios externos
+    SM_MAYOR = {"enfermeria", "psicologia"}
+    SM_MENOR = {"psiquiatria", "trabajo_social", "acompanante_terapeutico", "terapia_ocupacional", "psicopedagogia"}
+    ETIQ_AREAS = {
+        "enfermeria":               "Enfermería",
+        "psicologia":               "Psicología",
+        "psiquiatria":              "Psiquiatría",
+        "trabajo_social":           "Trabajo Social",
+        "acompanante_terapeutico":  "Acomp. Terapéutico",
+        "terapia_ocupacional":      "Terapia Ocupacional",
+        "psicopedagogia":           "Psicopedagogía",
+        "otros":                    "Otros",
+    }
     areas = data.get("intervenciones_por_area", {})
-    df_may = pd.DataFrame([{"Area": k, "N": v} for k, v in areas.items() if k in MAYORITARIAS]).sort_values("N", ascending=False)
-    df_min = pd.DataFrame([{"Area": k, "N": v} for k, v in areas.items() if k not in MAYORITARIAS]).sort_values("N", ascending=False)
 
-    col1, col2 = st.columns(2)
+    def _df_areas(keys_filter, any_key=False):
+        rows = []
+        for k, v in areas.items():
+            if any_key or k in keys_filter:
+                rows.append({"Area": ETIQ_AREAS.get(k, k.replace("_", " ").capitalize()), "N": v})
+        return pd.DataFrame(rows).sort_values("N", ascending=False) if rows else pd.DataFrame()
+
+    df_sm_may = _df_areas(SM_MAYOR)
+    df_sm_men = _df_areas(SM_MENOR)
+    df_ext    = _df_areas(SM_MAYOR | SM_MENOR, any_key=False)
+    # externos = lo que no es SM
+    SM_TODAS = SM_MAYOR | SM_MENOR
+    df_ext = pd.DataFrame([
+        {"Area": ETIQ_AREAS.get(k, k.replace("_", " ").capitalize()), "N": v}
+        for k, v in areas.items() if k not in SM_TODAS
+    ]).sort_values("N", ascending=False) if any(k not in SM_TODAS for k in areas) else pd.DataFrame()
+
+    def _bar_chart(df, color, height):
+        ch = alt.Chart(df).mark_bar(color=color).encode(
+            x=alt.X("N:Q", title="Intervenciones"),
+            y=alt.Y("Area:N", sort="-x", title=""),
+            tooltip=["Area", "N"]
+        ).properties(height=height)
+        lb = alt.Chart(df).mark_text(align="left", dx=3, fontSize=13).encode(
+            x="N:Q", y=alt.Y("Area:N", sort="-x"), text="N:Q"
+        )
+        return ch + lb
+
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.subheader("Áreas mayoritarias")
-        if not df_may.empty:
-            ch = alt.Chart(df_may).mark_bar(color="#4C78A8").encode(
-                x=alt.X("N:Q", title="Intervenciones"),
-                y=alt.Y("Area:N", sort="-x", title=""),
-                tooltip=["Area", "N"]
-            ).properties(height=110)
-            lb = alt.Chart(df_may).mark_text(align="left", dx=3, fontSize=13).encode(
-                x="N:Q", y=alt.Y("Area:N", sort="-x"), text="N:Q"
-            )
-            st.altair_chart(ch + lb, use_container_width=True)
+        st.subheader("Intervenciones por área — Salud Mental principal")
+        if not df_sm_may.empty:
+            st.altair_chart(_bar_chart(df_sm_may, "#4C78A8", max(110, len(df_sm_may) * 45)), use_container_width=True)
+        else:
+            st.info("Sin datos.")
     with col2:
-        st.subheader("Áreas minoritarias")
-        if not df_min.empty:
-            ch = alt.Chart(df_min).mark_bar(color="#F58518").encode(
-                x=alt.X("N:Q", title="Intervenciones"),
-                y=alt.Y("Area:N", sort="-x", title=""),
-                tooltip=["Area", "N"]
-            ).properties(height=max(160, len(df_min) * 38))
-            lb = alt.Chart(df_min).mark_text(align="left", dx=3, fontSize=13).encode(
-                x="N:Q", y=alt.Y("Area:N", sort="-x"), text="N:Q"
-            )
-            st.altair_chart(ch + lb, use_container_width=True)
+        st.subheader("Intervenciones por área — Equipo interdisciplinario")
+        if not df_sm_men.empty:
+            st.altair_chart(_bar_chart(df_sm_men, "#F58518", max(160, len(df_sm_men) * 45)), use_container_width=True)
+        else:
+            st.info("Sin datos.")
+    with col3:
+        st.subheader("Interconsultas externas detectadas")
+        if not df_ext.empty:
+            st.altair_chart(_bar_chart(df_ext, "#72B7B2", max(110, len(df_ext) * 45)), use_container_width=True)
+        else:
+            st.info("Sin datos.")
+
+    st.caption("Las barras representan conteos automatizados de intervenciones o menciones por área. Los resultados se encuentran en etapa de validación y pueden requerir revisión manual.")
 
     ETIQUETAS_VARIABLES = {
         "delirio_psicosis":        "Desorganización del pensamiento",
@@ -286,8 +319,9 @@ elif modulo == "Metricas HCD":
 
     # Interconsultas de todas las HCs procesadas
     if ics_all:
-        st.subheader(f"Interconsultas externas ({len(ics_all)})")
+        st.subheader(f"Detalle auditable de interconsultas detectadas ({len(ics_all)})")
         df_ics = pd.DataFrame(ics_all).sort_values(["Score", "Contar"], ascending=[False, False])
+        df_ics = df_ics.rename(columns={"Score": "Confianza", "Contar": "Incluir en conteo"})
         st.dataframe(df_ics, use_container_width=True, hide_index=True)
     else:
         st.info("No se detectaron interconsultas externas.")
