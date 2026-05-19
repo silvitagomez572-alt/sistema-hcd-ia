@@ -261,6 +261,19 @@ elif modulo == "Metricas HCD":
             )
             st.altair_chart(ch + lb, use_container_width=True)
 
+    ETIQUETAS_VARIABLES = {
+        "delirio_psicosis":        "Desorganización del pensamiento",
+        "sin_red_vincular":        "Ausencia de red de apoyo",
+        "agresividad":             "Agitación psicomotriz",
+        "adherencia_problematica": "Dificultades de adherencia",
+        "internacion_prolongada":  "Internación prolongada",
+        "estado_estable":          "Estado clínico estable",
+        "bradipsiquia":            "Enlentecimiento psicomotriz",
+        "ideacion_autolitica":     "Indicadores de riesgo",
+        "riesgo_fuga":             "Riesgo de abandono del servicio",
+        "consumo_sustancias":      "Consumo problemático",
+    }
+
     # Variables clínicas (solo HC individual)
     if vars_clinicas:
         presentes = [(k, v) for k, v in vars_clinicas.items() if v]
@@ -268,11 +281,12 @@ elif modulo == "Metricas HCD":
             st.subheader("Variables clínicas detectadas")
             ca, cb = st.columns(2)
             for i, (k, _) in enumerate(presentes):
-                (ca if i % 2 == 0 else cb).write(f"✅ {k.replace('_', ' ').capitalize()}")
+                etiqueta = ETIQUETAS_VARIABLES.get(k, k.replace("_", " ").capitalize())
+                (ca if i % 2 == 0 else cb).write(f"✅ {etiqueta}")
 
     # Interconsultas de todas las HCs procesadas
-    st.subheader(f"Interconsultas externas ({len(ics_all)})")
     if ics_all:
+        st.subheader(f"Interconsultas externas ({len(ics_all)})")
         df_ics = pd.DataFrame(ics_all).sort_values(["Score", "Contar"], ascending=[False, False])
         st.dataframe(df_ics, use_container_width=True, hide_index=True)
     else:
@@ -326,8 +340,9 @@ elif modulo == "Resumen HCs":
         st.subheader("Variables clínicas por frecuencia")
         if vars_freq:
             import altair as alt
+            ETIQ_VARS = {"delirio_psicosis":"Desorganización del pensamiento","sin_red_vincular":"Ausencia de red de apoyo","agresividad":"Agitación psicomotriz","adherencia_problematica":"Dificultades de adherencia","internacion_prolongada":"Internación prolongada","estado_estable":"Estado clínico estable","bradipsiquia":"Enlentecimiento psicomotriz","ideacion_autolitica":"Indicadores de riesgo","riesgo_fuga":"Riesgo de abandono del servicio","consumo_sustancias":"Consumo problemático"}
             df_vars = pd.DataFrame({"Variable": list(vars_freq.keys()), "Pacientes": list(vars_freq.values())})
-            df_vars["Variable"] = df_vars["Variable"].str.replace("_", " ").str.capitalize()
+            df_vars["Variable"] = df_vars["Variable"].map(lambda k: ETIQ_VARS.get(k, k.replace("_", " ").capitalize()))
             ch = alt.Chart(df_vars).mark_bar(color="#72B7B2").encode(
                 x=alt.X("Pacientes:Q", title="N° pacientes"),
                 y=alt.Y("Variable:N", sort="-x", title=""),
@@ -357,9 +372,10 @@ elif modulo == "Resumen HCs":
     # Variables clínicas presentes por paciente (detalle)
     st.subheader("Variables clínicas presentes por paciente")
     det_filas = []
+    ETIQ_VARS2 = {"delirio_psicosis":"Desorganización del pensamiento","sin_red_vincular":"Ausencia de red de apoyo","agresividad":"Agitación psicomotriz","adherencia_problematica":"Dificultades de adherencia","internacion_prolongada":"Internación prolongada","estado_estable":"Estado clínico estable","bradipsiquia":"Enlentecimiento psicomotriz","ideacion_autolitica":"Indicadores de riesgo","riesgo_fuga":"Riesgo de abandono del servicio","consumo_sustancias":"Consumo problemático"}
     for c in casos:
         for v in c["variables_clinicas_presentes"]:
-            det_filas.append({"Paciente": c["codigo_paciente"], "Variable": v.replace("_", " ").capitalize()})
+            det_filas.append({"Paciente": c["codigo_paciente"], "Variable": ETIQ_VARS2.get(v, v.replace("_", " ").capitalize())})
     if det_filas:
         st.dataframe(pd.DataFrame(det_filas), use_container_width=True, hide_index=True)
 
