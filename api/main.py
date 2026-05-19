@@ -332,8 +332,25 @@ REGLAS_AREA_TEXTO = {
         "actividades de la vida diaria","avd","actividades ocupacionales"
     ],
     "psiquiatria": [
-        "psiquiatria","psiquiatría","psiquiatra","guardia de psiquiatria",
-        "indicacion psiquiatrica","indicación psiquiátrica","psiq."
+        # sustantivo (ambas grafías)
+        "psiquiatria","psiquiatría",
+        # persona
+        "psiquiatra","psiquiatras",
+        # formas adjetivales (acento en á): captura evaluación/medicación/
+        # guardia/indicación/interconsulta psiquiátrica y variantes
+        "psiquiátrica","psiquiátrico","psiquiátricas","psiquiátricos",
+        "psiquiatrica","psiquiatrico","psiquiatricas","psiquiatricos",
+        # frases compuestas frecuentes
+        "guardia de psiquiatria","guardia de psiquiatría",
+        "guardia psiquiátrica","guardia psiquiatrica",
+        "evaluacion psiquiatrica","evaluación psiquiátrica",
+        "medicacion psiquiatrica","medicación psiquiátrica",
+        "indicacion psiquiatrica","indicación psiquiátrica",
+        "interconsulta psiquiatrica","interconsulta psiquiátrica",
+        "consulta psiquiatrica","consulta psiquiátrica",
+        "atencion psiquiatrica","atención psiquiátrica",
+        # abreviaturas
+        "psiq.","psiq ","psiq:",
     ],
     "psicologia": [
         "psicologia","psicología","psicologa","psicólogo","psicóloga",
