@@ -341,6 +341,7 @@ elif modulo == "Resumen HCs":
                 x="Total:Q", y=alt.Y("Estado:N", sort="-x"), text="Total:Q"
             )
             st.altair_chart(ch2 + lb2, use_container_width=True)
+        st.warning("⚠️ Los datos de interconsultas son una estimación automatizada en revisión. No reemplaza la auditoría manual de las HCs.")
 
     # Variables clínicas presentes por paciente (detalle)
     st.subheader("Variables clínicas presentes por paciente")
