@@ -114,6 +114,18 @@ elif modulo == "Interconsultas HCD":
         st.markdown(f"### 👤 {codigo}")
         st.caption(f"Fecha: {h['fecha'][:10]}")
 
+        with st.expander("¿Cómo se calcula la confianza?"):
+            st.write(
+                "El puntaje se asigna mediante reglas lingüísticas aplicadas al texto clínico de cada registro:\n\n"
+                "- **5 — Efectiva confirmada:** el texto contiene frases de acción completada: "
+                "*\"se realiza interconsulta\", \"evaluado por\", \"responde interconsulta\"*.\n"
+                "- **4 — Solicitada:** hay registro explícito de solicitud: "
+                "*\"se solicita interconsulta\", \"requiere valoración por\"*.\n"
+                "- **3 — Pendiente sin respuesta:** el texto indica que la interconsulta fue pedida "
+                "pero no se registra respuesta: *\"pendiente i/c\", \"i/c pendiente\"*.\n"
+                "- **0 — Solo mención:** el servicio aparece nombrado en el texto sin acción asociada.\n\n"
+                "Solo las interconsultas con confianza ≥ 4 se marcan como **✓ confirmadas**."
+            )
         st.caption("Confianza: 5 = efectiva confirmada · 4 = solicitada · 3 = pendiente sin respuesta · 0 = solo mención")
         for ic in ics:
             svcs = ic.get("servicios", [])
