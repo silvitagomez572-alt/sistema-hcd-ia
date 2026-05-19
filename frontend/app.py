@@ -75,28 +75,69 @@ elif modulo == "Base de Conocimiento":
             st.warning("Escribi una consulta primero.")
 elif modulo == "Interconsultas HCD":
     st.title("Interconsultas detectadas")
+
+    ESTADO_COLOR = {
+        "interconsulta_efectiva":  ("🟢", "success"),
+        "seguimiento":             ("🟢", "success"),
+        "interconsulta_inicial":   ("🔵", "info"),
+        "interconsulta_pendiente": ("🟡", "warning"),
+        "mencion_servicio":        ("⚪", "secondary"),
+    }
+
     reps = requests.get(f"{API}/hcd/reportes")
-    hcs = reps.json() if reps.status_code == 200 else []
-    opciones = {f"{h['id']} - {h['archivo']}": h for h in hcs}
-    sel = st.selectbox("Seleccionar HC", list(opciones.keys())) if opciones else None
-    if sel:
-        hc_sel = opciones[sel]
+    hcs_raw = reps.json() if reps.status_code == 200 else []
+
+    # Deduplicar por archivo (mismo criterio que Métricas)
+    seen = {}
+    for h in hcs_raw:
+        if h["archivo"] not in seen:
+            seen[h["archivo"]] = h
+    hcs = list(seen.values())
+
+    if not hcs:
+        st.warning("No hay HCs procesadas.")
+        st.stop()
+
+    opciones = {"— Todas las HCs —": None}
+    opciones.update({f"{h['nombre_paciente'] or h['archivo']}": h for h in hcs})
+    sel = st.selectbox("Seleccionar paciente", list(opciones.keys()))
+    hcs_mostrar = hcs if opciones[sel] is None else [opciones[sel]]
+
+    for h in hcs_mostrar:
+        nombre = h.get("nombre_paciente") or h["archivo"]
         try:
-            data = json.loads(hc_sel["resumen"])
-            ics = data.get("interconsultas_detectadas", [])
-            if ics:
-                for ic in ics:
-                    svcs = ic.get("servicios_detectados", ic.get("servicios", []))
-                    estado = ic.get("estado_interconsulta", ic.get("estado", ""))
-                    motivo = ic.get("motivo", "")
-                    texto = ic.get("texto_original", ic.get("texto", ""))
-                    with st.expander(f"{svcs[0].upper() if svcs else 'SERVICIO'} - {estado}"):
-                        st.write(f"**Motivo:** {motivo}")
-                        st.write(f"**Texto:** {texto}")
-            else:
-                st.info("No se detectaron interconsultas externas para esta HC.")
+            data = json.loads(h["resumen"])
         except:
-            st.info("Esta HC no tiene interconsultas estructuradas.")
+            continue
+        ics = data.get("interconsultas_detectadas", [])
+        if not ics:
+            continue
+
+        st.markdown(f"### 👤 {nombre}")
+        st.caption(f"Archivo: {h['archivo']} · {h['fecha'][:10]}")
+
+        for ic in ics:
+            svcs = ic.get("servicios", [])
+            estado = ic.get("estado_interconsulta", "mencion_servicio")
+            score = ic.get("score", 0)
+            contar = ic.get("contar", False)
+            evidencia = ic.get("evidencia", ic.get("texto", ""))
+            emoji, color = ESTADO_COLOR.get(estado, ("⚪", "secondary"))
+            svc_label = ", ".join(s.upper() for s in svcs) if svcs else "SERVICIO"
+            contar_label = "✔ cuenta" if contar else "✘ no cuenta"
+
+            if color == "success":
+                st.success(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
+            elif color == "warning":
+                st.warning(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
+            elif color == "info":
+                st.info(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
+            else:
+                st.markdown(f"{emoji} **{svc_label}** · {estado.replace('_',' ')} · score {score} · {contar_label}")
+            if evidencia:
+                st.caption(f"↳ {evidencia[:120]}")
+
+        st.divider()
 elif modulo == "Metricas HCD":
     st.title("Métricas del Sistema HCD")
     import altair as alt
@@ -127,7 +168,7 @@ elif modulo == "Metricas HCD":
 
     # Selector de HC
     opciones = {"— Todas las HCs —": None}
-    opciones.update({f"{h['id']} - {h['archivo']}": h for h in hcs})
+    opciones.update({f"{h['nombre_paciente'] or h['archivo']}": h for h in hcs})
     seleccion = st.selectbox("Seleccionar HC", list(opciones.keys()))
     hc_sel = opciones[seleccion]
 
@@ -148,8 +189,8 @@ elif modulo == "Metricas HCD":
                     dias_list.append(intern["dias_totales"])
                 for ic in d.get("interconsultas_detectadas", []):
                     for svc in ic.get("servicios", []):
-                        ics_all.append({"HC": h["archivo"], "Servicio": svc,
-                            "Estado": ic.get("estado_interconsulta", ""),
+                        ics_all.append({"Paciente": h.get("nombre_paciente") or h["archivo"],
+                            "Servicio": svc, "Estado": ic.get("estado_interconsulta", ""),
                             "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
             except:
                 pass
@@ -167,8 +208,8 @@ elif modulo == "Metricas HCD":
         vars_clinicas = data.get("variables_clinicas_detectadas", {})
         for ic in data.get("interconsultas_detectadas", []):
             for svc in ic.get("servicios", []):
-                ics_all.append({"HC": hc_sel["archivo"], "Servicio": svc,
-                    "Estado": ic.get("estado_interconsulta", ""),
+                ics_all.append({"Paciente": hc_sel.get("nombre_paciente") or hc_sel["archivo"],
+                    "Servicio": svc, "Estado": ic.get("estado_interconsulta", ""),
                     "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
 
     # Métricas resumen
