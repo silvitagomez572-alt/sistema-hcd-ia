@@ -114,6 +114,7 @@ elif modulo == "Interconsultas HCD":
         st.markdown(f"### 👤 {codigo}")
         st.caption(f"Fecha: {h['fecha'][:10]}")
 
+        st.caption("Confianza: 5 = efectiva confirmada · 4 = solicitada · 3 = pendiente sin respuesta · 0 = solo mención")
         for ic in ics:
             svcs = ic.get("servicios", [])
             estado = ic.get("estado_interconsulta", "mencion_servicio")
@@ -122,14 +123,14 @@ elif modulo == "Interconsultas HCD":
             evidencia = ic.get("evidencia", ic.get("texto", ""))
             emoji, _ = ESTADO_COLOR.get(estado, ("⚪", "secondary"))
             svc_label = ", ".join(s.upper() for s in svcs) if svcs else "SERVICIO"
-            contar_label = "cuenta" if contar else "no cuenta"
+            confirmada_label = "✓ confirmada" if contar else "✗ no confirmada"
 
             with st.container():
                 c1, c2, c3, c4 = st.columns([3, 4, 1, 2])
                 c1.write(f"{emoji} {svc_label}")
                 c2.write(estado.replace("_", " "))
-                c3.write(f"score {score}")
-                c4.write(contar_label)
+                c3.write(f"confianza {score}")
+                c4.write(confirmada_label)
                 if evidencia:
                     st.caption(f"↳ {evidencia[:120]}")
 
