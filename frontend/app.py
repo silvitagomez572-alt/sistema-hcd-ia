@@ -183,8 +183,9 @@ elif modulo == "Metricas HCD":
 
     # Construir datos: agregar todas o mostrar una sola
     ics_all = []
+    dias_pac = []  # (codigo_paciente, dias) para estadísticas consolidadas
     if hc_sel is None:
-        areas_total, total_int, reingresos, cambios, dias_list = {}, 0, 0, 0, []
+        areas_total, total_int, reingresos, cambios = {}, 0, 0, 0
         for h in hcs:
             try:
                 d = json.loads(h["resumen"])
@@ -194,8 +195,9 @@ elif modulo == "Metricas HCD":
                 intern = d.get("internacion", {})
                 reingresos += intern.get("reingresos", 0)
                 cambios += intern.get("cambios_cama", 0)
-                if intern.get("dias_totales"):
-                    dias_list.append(intern["dias_totales"])
+                dias = intern.get("dias_totales", 0)
+                if dias:
+                    dias_pac.append((h["codigo_paciente"], dias))
                 for ic in d.get("interconsultas_detectadas", []):
                     for svc in ic.get("servicios", []):
                         ics_all.append({"Paciente": h["codigo_paciente"],
@@ -203,12 +205,14 @@ elif modulo == "Metricas HCD":
                             "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
             except:
                 pass
+        dias_vals = [d for _, d in dias_pac]
+        dias_avg = round(sum(dias_vals) / len(dias_vals), 1) if dias_vals else 0
         data = {"intervenciones_por_area": areas_total, "total_intervenciones": total_int,
-                "internacion": {"dias_totales": round(sum(dias_list)/len(dias_list)) if dias_list else 0,
-                                "reingresos": reingresos, "cambios_cama": cambios},
+                "internacion": {"dias_totales": dias_avg, "reingresos": reingresos, "cambios_cama": cambios},
                 "modelo_nlp": {"accuracy": 0.9298}}
         vars_clinicas = {}
     else:
+        dias_vals = []
         try:
             data = json.loads(hc_sel["resumen"])
         except:
@@ -222,12 +226,28 @@ elif modulo == "Metricas HCD":
                     "Score": ic.get("score", 0), "Contar": ic.get("contar", False)})
 
     # Métricas resumen
-    c1, c2, c3, c4 = st.columns(4)
     internacion = data.get("internacion", {})
-    c1.metric("Intervenciones", data.get("total_intervenciones", "-"))
-    c2.metric("Accuracy modelo", f"{data.get('modelo_nlp', {}).get('accuracy', 0.9298):.1%}")
-    c3.metric("Días internación" if hc_sel else "Días prom.", internacion.get("dias_totales", "-"))
-    c4.metric("Reingresos", internacion.get("reingresos", "-"))
+    if hc_sel is None:
+        # Vista consolidada: fila de totales + fila de estadísticas de días
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Intervenciones válidas totales", data.get("total_intervenciones", "-"))
+        c2.metric("Accuracy modelo", f"{data.get('modelo_nlp', {}).get('accuracy', 0.9298):.1%}")
+        c3.metric("Reingresos", internacion.get("reingresos", "-"))
+        if dias_vals:
+            import statistics as _stats
+            pac_max = max(dias_pac, key=lambda x: x[1])
+            d1, d2, d3, d4, d5 = st.columns(5)
+            d1.metric("Promedio días internación", f"{dias_avg:.1f}")
+            d2.metric("Mediana días", f"{_stats.median(dias_vals):.0f}")
+            d3.metric("Mínimo días", min(dias_vals))
+            d4.metric("Máximo días", max(dias_vals))
+            d5.metric("Mayor período", f"{pac_max[0]} ({pac_max[1]}d)")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Intervenciones", data.get("total_intervenciones", "-"))
+        c2.metric("Accuracy modelo", f"{data.get('modelo_nlp', {}).get('accuracy', 0.9298):.1%}")
+        c3.metric("Días internación", internacion.get("dias_totales", "-"))
+        c4.metric("Reingresos", internacion.get("reingresos", "-"))
 
     # Tres gráficos: SM principal / equipo interdisciplinario SM / interconsultas externas
     SM_PRINCIPAL   = {"enfermeria", "psicologia", "psiquiatria"}
@@ -339,13 +359,27 @@ elif modulo == "Resumen HCs":
     vars_freq = reporte["variables_clinicas_por_frecuencia"]
     ics_estado = reporte["interconsultas_por_estado"]
 
-    # KPIs ejecutivos
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Pacientes", resumen["total_pacientes"])
-    c2.metric("Intervenciones totales", resumen["total_intervenciones"])
-    c3.metric("Prom. intervenciones", resumen["promedio_intervenciones_por_paciente"])
-    c4.metric("Prom. días internación", resumen["promedio_dias_internacion"])
-    c5.metric("Reingresos", resumen["total_reingresos"])
+    # KPIs ejecutivos — calculados desde datos individuales validados por paciente
+    import statistics as _stats
+    total_int_calc = sum(c["total_intervenciones"] for c in casos)
+    n_pac = len(casos)
+    dias_pac_res = [(c["codigo_paciente"], c["dias_internacion"]) for c in casos if c["dias_internacion"]]
+    dias_vals_res = [d for _, d in dias_pac_res]
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Pacientes", n_pac)
+    c2.metric("Intervenciones válidas totales", total_int_calc)
+    c3.metric("Promedio intervenciones/paciente", round(total_int_calc / n_pac, 1) if n_pac else 0)
+    c4.metric("Reingresos", resumen["total_reingresos"])
+
+    if dias_vals_res:
+        pac_max_res = max(dias_pac_res, key=lambda x: x[1])
+        d1, d2, d3, d4, d5 = st.columns(5)
+        d1.metric("Promedio días internación", f"{sum(dias_vals_res)/len(dias_vals_res):.1f}")
+        d2.metric("Mediana días", f"{_stats.median(dias_vals_res):.0f}")
+        d3.metric("Mínimo días", min(dias_vals_res))
+        d4.metric("Máximo días", max(dias_vals_res))
+        d5.metric("Mayor período", f"{pac_max_res[0]} ({pac_max_res[1]}d)")
 
     # Tabla comparativa
     st.subheader("Tabla comparativa por paciente")
