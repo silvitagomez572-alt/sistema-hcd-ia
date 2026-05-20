@@ -6,7 +6,18 @@ import json
 API = "http://localhost:8001"
 st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
-modulo = st.sidebar.radio("Modulo", ["Ingresar HC","Extraccion OCR","Pseudonimizacion","Modelo NLP","Base de Conocimiento","Interconsultas HCD","Metricas HCD","Resumen HCs","Reporte"])
+modulo = st.sidebar.radio("Modulo", [
+    "Ingresar HC",
+    "OCR",
+    "Pseudonimizacion",
+    "Procesamiento NLP",
+    "RAG",
+    "LLM local",
+    "Interconsultas HCD",
+    "Metricas HCD",
+    "Resumen HCs",
+    "Reporte",
+])
 
 if modulo == "Ingresar HC":
     st.title("Ingresar Historia Clinica")
@@ -28,36 +39,39 @@ if modulo == "Ingresar HC":
                         st.error(f"Error: {r.status_code}")
                 except Exception as e:
                     st.error(f"Error: {e}")
-elif modulo == "Extraccion OCR":
-    st.title("OCR - Extraccion de Texto")
-    st.text_area("Resultado", value="13/11/2025 - 05:33\nNota enfermeria\nPaciente tranquila...", height=200)
-    st.success("Texto extraido.")
+elif modulo == "OCR":
+    st.title("OCR — Extracción de Texto")
+    st.caption("Módulo en desarrollo. Procesamiento de imágenes y PDFs escaneados.")
+    st.text_area("Resultado de muestra", value="13/11/2025 - 05:33\nNota enfermeria\nPaciente tranquila...", height=200)
+    st.success("Texto extraído.")
 elif modulo == "Pseudonimizacion":
-    st.title("Pseudonimizacion")
-    c1,c2 = st.columns(2)
+    st.title("Pseudonimización")
+    c1, c2 = st.columns(2)
     c1.text_area("Original", value="Paciente: Maria Lopez\nDNI: 28456789", height=150)
     c2.text_area("Resultado", value="Paciente: [HC_ELIMINADA]\nDNI: [DNI_ELIMINADO]", height=150)
     st.success("Datos sensibles eliminados.")
-elif modulo == "Modelo NLP":
-    st.title("LLM - Extraccion de Intervenciones")
-    st.info("Modelo: gemma:2b via Ollama | Accuracy base: 92.98%")
-    pregunta = st.text_input("Consulta al LLM", placeholder="Resume las intervenciones de salud mental")
-    if st.button("Ejecutar"):
-        if pregunta:
-            with st.spinner("Consultando LLM..."):
-                try:
-                    r = requests.post(f"{API}/llm/consultar", json={"pregunta": pregunta})
-                    if r.status_code == 200:
-                        st.success(r.json()["respuesta"])
-                    else:
-                        st.error(f"Error API: {r.status_code}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
-        else:
-            st.warning("Escribi una consulta primero.")
-elif modulo == "Base de Conocimiento":
-    st.title("RAG - Protocolos Clinicos")
-    q = st.text_input("Consultar", placeholder="protocolo contencion salud mental")
+elif modulo == "Procesamiento NLP":
+    st.title("Procesamiento NLP")
+    st.caption("Pipeline clínico local — sin modelos de lenguaje externos.")
+    st.markdown("""
+**Etapas del pipeline:**
+
+1. **Parsing clínico** — segmentación de bloques por fecha/hora y marcadores clínicos (regex)
+2. **Normalización Unicode** — unificación de acentos y variantes tipográficas
+3. **Criterio de conteo** — validación de bloques por longitud mínima, deduplicación exacta y marcadores reconocidos
+4. **Clasificador híbrido de áreas** — 4 capas en orden de prioridad:
+   - Diccionario de profesionales (firma explícita)
+   - Reglas por texto (keywords por área)
+   - Modelo TF-IDF + Regresión Logística
+   - Fallback: `otros`
+5. **Detección de interconsultas** — servicios externos y estado (efectiva / solicitada / pendiente / mención)
+6. **Salida estructurada** — JSON con `total_intervenciones`, `intervenciones_por_area`, `variables_clinicas_detectadas`, `interconsultas_detectadas`
+""")
+    st.info(f"Accuracy clasificador de áreas: **92.98%** (TF-IDF + Logistic Regression, validado sobre registros etiquetados)")
+elif modulo == "RAG":
+    st.title("RAG — Protocolos Clínicos")
+    st.caption("Recuperación semántica sobre base documental de protocolos y glosarios.")
+    q = st.text_input("Consultar base de conocimiento", placeholder="protocolo contención salud mental")
     if st.button("Buscar"):
         if q:
             with st.spinner("Buscando en base de conocimiento..."):
@@ -65,12 +79,45 @@ elif modulo == "Base de Conocimiento":
                     r = requests.post(f"{API}/rag/consultar", json={"pregunta": q})
                     if r.status_code == 200:
                         st.success(r.json()["respuesta"])
+                        fuentes = r.json().get("fuentes", [])
+                        if fuentes:
+                            st.caption(f"Fuentes: {fuentes}")
                     else:
                         st.error(f"Error API: {r.status_code}")
                 except Exception as e:
                     st.error(f"Error: {e}")
         else:
-            st.warning("Escribi una consulta primero.")
+            st.warning("Escribí una consulta primero.")
+elif modulo == "LLM local":
+    st.title("LLM local")
+    st.caption(
+        "LLM local representa la capa de análisis contextual avanzado "
+        "basada en modelos de lenguaje ejecutados localmente."
+    )
+
+    tab_gemma, tab_mistral = st.tabs(["Gemma (activo)", "Mistral (próximamente)"])
+
+    with tab_gemma:
+        st.markdown("**Modelo:** `gemma:2b` vía Ollama · API local `localhost:11434`")
+        pregunta = st.text_input("Consulta al LLM", placeholder="Resume las intervenciones de salud mental",
+                                 key="llm_gemma_input")
+        if st.button("Ejecutar", key="llm_gemma_btn"):
+            if pregunta:
+                with st.spinner("Consultando Gemma vía Ollama..."):
+                    try:
+                        r = requests.post(f"{API}/llm/consultar", json={"pregunta": pregunta})
+                        if r.status_code == 200:
+                            st.success(r.json()["respuesta"])
+                        else:
+                            st.error(f"Error API: {r.status_code}")
+                    except Exception as e:
+                        st.error(f"Error de conexión: {e}")
+            else:
+                st.warning("Escribí una consulta primero.")
+
+    with tab_mistral:
+        st.info("Integración con Mistral en desarrollo. Se conectará vía Ollama con el mismo endpoint local.")
+        st.code("ollama run mistral", language="bash")
 elif modulo == "Interconsultas HCD":
     st.title("Interconsultas detectadas")
 
