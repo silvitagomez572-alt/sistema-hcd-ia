@@ -67,6 +67,39 @@ async def rag_consultar(payload: dict):
         data = r.json()
         return {"respuesta": data.get("response", ""), "fuentes": resultados["metadatas"][0]}
 
+import os
+
+RAG_PROTOCOLOS_DIR = BASE_DIR / "rag" / "protocolos"
+
+@app.get("/rag/documentos")
+def rag_documentos():
+    RAG_PROTOCOLOS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        collection = get_collection()
+        metas = collection.get(include=["metadatas"])["metadatas"]
+        indexados = {m["fuente"] for m in metas if "fuente" in m}
+    except Exception:
+        indexados = set()
+    docs = []
+    for f in sorted(RAG_PROTOCOLOS_DIR.iterdir()):
+        if f.is_file():
+            docs.append({
+                "nombre": f.name,
+                "tipo": f.suffix.upper().lstrip("."),
+                "tamano_kb": round(f.stat().st_size / 1024, 1),
+                "indexado": f.name in indexados,
+            })
+    return docs
+
+@app.post("/rag/subir")
+async def rag_subir(archivo: UploadFile = File(...)):
+    RAG_PROTOCOLOS_DIR.mkdir(parents=True, exist_ok=True)
+    destino = RAG_PROTOCOLOS_DIR / archivo.filename
+    contenido = await archivo.read()
+    with open(destino, "wb") as out:
+        out.write(contenido)
+    return {"archivo": archivo.filename, "estado": "guardado", "indexado": False}
+
 from fastapi import UploadFile, File
 from bs4 import BeautifulSoup
 import xlrd, openpyxl, io

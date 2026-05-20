@@ -16,7 +16,7 @@ modulo = st.sidebar.radio("Modulo", [
     "Interconsultas HCD",
     "Metricas HCD",
     "Resumen HCs",
-    "Reporte",
+    "Informe",
 ])
 
 if modulo == "Ingresar HC":
@@ -70,24 +70,85 @@ elif modulo == "Procesamiento NLP":
     st.info(f"Accuracy clasificador de áreas: **92.98%** (TF-IDF + Logistic Regression, validado sobre registros etiquetados)")
 elif modulo == "RAG":
     st.title("RAG — Protocolos Clínicos")
-    st.caption("Recuperación semántica sobre base documental de protocolos y glosarios.")
-    q = st.text_input("Consultar base de conocimiento", placeholder="protocolo contención salud mental")
-    if st.button("Buscar"):
-        if q:
-            with st.spinner("Buscando en base de conocimiento..."):
-                try:
-                    r = requests.post(f"{API}/rag/consultar", json={"pregunta": q})
-                    if r.status_code == 200:
-                        st.success(r.json()["respuesta"])
-                        fuentes = r.json().get("fuentes", [])
-                        if fuentes:
-                            st.caption(f"Fuentes: {fuentes}")
-                    else:
-                        st.error(f"Error API: {r.status_code}")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    st.caption("Recuperación semántica sobre base documental de protocolos y glosarios institucionales.")
+
+    tab_docs, tab_busqueda = st.tabs(["📂 Documentos", "🔍 Búsqueda semántica"])
+
+    with tab_docs:
+        st.subheader("Base documental")
+        st.caption(
+            "Tipos de documentos admitidos: Ley N° 26.657, protocolos clínicos, "
+            "guías OMS/mhGAP, criterios institucionales, glosarios."
+        )
+        try:
+            resp_docs = requests.get(f"{API}/rag/documentos", timeout=10)
+            docs = resp_docs.json() if resp_docs.status_code == 200 else []
+        except Exception as e:
+            docs = []
+            st.error(f"Error al obtener documentos: {e}")
+
+        if docs:
+            rows = []
+            for d in docs:
+                rows.append({
+                    "Archivo": d["nombre"],
+                    "Tipo": d["tipo"],
+                    "Tamaño (KB)": d["tamano_kb"],
+                    "Estado": "✅ Indexado" if d["indexado"] else "⏳ Pendiente",
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         else:
-            st.warning("Escribí una consulta primero.")
+            st.info("No hay documentos cargados aún.")
+
+        st.divider()
+        st.subheader("Cargar nuevo documento")
+        archivo_up = st.file_uploader(
+            "Seleccionar archivo",
+            type=["pdf", "txt", "docx"],
+            key="rag_upload",
+        )
+        if archivo_up and st.button("Subir documento", key="rag_subir_btn"):
+            with st.spinner("Subiendo..."):
+                try:
+                    r = requests.post(
+                        f"{API}/rag/subir",
+                        files={"archivo": (archivo_up.name, archivo_up.getvalue(), archivo_up.type)},
+                        timeout=30,
+                    )
+                    if r.status_code == 200:
+                        st.success(f"Documento '{archivo_up.name}' guardado. Estado: pendiente de indexación.")
+                        st.rerun()
+                    else:
+                        st.error(f"Error al subir: {r.status_code}")
+                except Exception as e:
+                    st.error(f"Error de conexión: {e}")
+
+    with tab_busqueda:
+        st.subheader("Búsqueda semántica")
+        q = st.text_input(
+            "Consultar base de conocimiento",
+            placeholder="protocolo contención salud mental",
+            key="rag_query",
+        )
+        if st.button("Buscar", key="rag_buscar_btn"):
+            if q:
+                with st.spinner("Buscando en base de conocimiento..."):
+                    try:
+                        r = requests.post(f"{API}/rag/consultar", json={"pregunta": q})
+                        if r.status_code == 200:
+                            data_rag = r.json()
+                            st.success(data_rag["respuesta"])
+                            fuentes = data_rag.get("fuentes", [])
+                            if fuentes:
+                                with st.expander("Fuentes recuperadas"):
+                                    for f in fuentes:
+                                        st.caption(str(f))
+                        else:
+                            st.error(f"Error API: {r.status_code}")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.warning("Escribí una consulta primero.")
 elif modulo == "LLM local":
     st.title("LLM local")
     st.caption(
@@ -509,8 +570,8 @@ elif modulo == "Resumen HCs":
         "application/json"
     )
 
-elif modulo == "Reporte":
-    st.title("Reporte Final - JSON")
+elif modulo == "Informe":
+    st.title("Informe Final - JSON")
     reps = requests.get(f"{API}/hcd/reportes")
     hcs = reps.json() if reps.status_code == 200 else []
     opciones = {f"{h['id']} - {h['archivo']}": h for h in hcs}
