@@ -202,11 +202,16 @@ def get_reportes():
 @app.get("/hcd/reporte-total")
 def reporte_total():
     con = sqlite3.connect(DB_PATH)
-    rows = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas ORDER BY id").fetchall()
+    # Deduplicar: mantener el registro más reciente por archivo
+    rows = con.execute(
+        "SELECT id, archivo, resumen, fecha FROM hcs_procesadas "
+        "WHERE id IN (SELECT MAX(id) FROM hcs_procesadas GROUP BY archivo) "
+        "ORDER BY id"
+    ).fetchall()
     con.close()
 
     casos, areas_global, vars_global, ics_por_estado = [], {}, {}, {}
-    total_intervenciones = total_dias = total_reingresos = 0
+    total_intervenciones = total_reingresos = 0
     dias_list = []
 
     for r in rows:
@@ -215,14 +220,22 @@ def reporte_total():
         except:
             continue
         codigo = f"PAC-{r[0]:03d}"
+        total_pac = d.get("total_intervenciones", 0)
         intern = d.get("internacion", {})
         dias = intern.get("dias_totales", 0)
+        areas = d.get("intervenciones_por_area", {})
+
+        # Registro válido: total_intervenciones > 0 y áreas consistentes
+        datos_validos = total_pac > 0 and sum(areas.values()) == total_pac
+        if not datos_validos:
+            continue
+
         if dias:
             dias_list.append(dias)
-        total_intervenciones += d.get("total_intervenciones", 0)
+        total_intervenciones += total_pac
         total_reingresos += intern.get("reingresos", 0)
 
-        areas = d.get("intervenciones_por_area", {})
+        # Áreas solo de registros válidos (misma lógica que Métricas HCD)
         for k, v in areas.items():
             areas_global[k] = areas_global.get(k, 0) + v
 
@@ -241,8 +254,9 @@ def reporte_total():
         vars_presentes = [k for k, v in vars_c.items() if v]
         casos.append({
             "codigo_paciente": codigo,
-            "fecha": r[3][:10],
-            "total_intervenciones": d.get("total_intervenciones", 0),
+            "archivo": r[1],
+            "fecha_procesamiento": r[3][:10],
+            "total_intervenciones": total_pac,
             "dias_internacion": dias,
             "reingresos": intern.get("reingresos", 0),
             "area_principal": area_principal,
