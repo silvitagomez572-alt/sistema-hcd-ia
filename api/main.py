@@ -3,7 +3,7 @@ import pathlib
 import httpx
 import chromadb
 from chromadb.utils import embedding_functions
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import datetime as dt_module
 from zoneinfo import ZoneInfo
@@ -67,9 +67,7 @@ async def rag_consultar(payload: dict):
         data = r.json()
         return {"respuesta": data.get("response", ""), "fuentes": resultados["metadatas"][0]}
 
-import os
-
-RAG_PROTOCOLOS_DIR = BASE_DIR / "rag" / "protocolos"
+RAG_PROTOCOLOS_DIR = BASE_DIR.parent / "rag" / "protocolos"
 
 @app.get("/rag/documentos")
 def rag_documentos():
@@ -100,7 +98,6 @@ async def rag_subir(archivo: UploadFile = File(...)):
         out.write(contenido)
     return {"archivo": archivo.filename, "estado": "guardado", "indexado": False}
 
-from fastapi import UploadFile, File
 from bs4 import BeautifulSoup
 import xlrd, openpyxl, io
 
