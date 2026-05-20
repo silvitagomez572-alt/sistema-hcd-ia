@@ -320,27 +320,17 @@ def detectar_area_por_profesional(nombre_prof):
             return area
     return None  # externo = interconsulta
 
+# Prioridad de clasificación: psiquiatria > psicologia > terapia_ocupacional
+# > trabajo_social > acompanante_terapeutico > enfermeria > psicopedagogia
+# El clasificador itera en orden de inserción del dict y retorna el primer match.
 REGLAS_AREA_TEXTO = {
-    "acompanante_terapeutico": [
-        "acompañante terapeutico","acompañante terapéutico","acomp. terapeutico",
-        "acomp.terapeutico","at ","a.t.","tarea de at","rol del at","actividad con at",
-        "acompañamiento terapeutico","acompañamiento terapéutico"
-    ],
-    "terapia_ocupacional": [
-        "terapia ocupacional","terapista ocupacional","t.o.","to ","terapeuta ocupacional",
-        "taller de to","actividad de to","espacio de to","taller ocupacional",
-        "actividades de la vida diaria","avd","actividades ocupacionales"
-    ],
     "psiquiatria": [
-        # sustantivo (ambas grafías)
-        "psiquiatria","psiquiatría",
-        # persona
-        "psiquiatra","psiquiatras",
-        # formas adjetivales (acento en á): captura evaluación/medicación/
-        # guardia/indicación/interconsulta psiquiátrica y variantes
+        # sustantivo y persona
+        "psiquiatria","psiquiatría","psiquiatra","psiquiatras",
+        # formas adjetivales (acento en á ≠ acento en í del sustantivo)
         "psiquiátrica","psiquiátrico","psiquiátricas","psiquiátricos",
         "psiquiatrica","psiquiatrico","psiquiatricas","psiquiatricos",
-        # frases compuestas frecuentes
+        # frases compuestas
         "guardia de psiquiatria","guardia de psiquiatría",
         "guardia psiquiátrica","guardia psiquiatrica",
         "evaluacion psiquiatrica","evaluación psiquiátrica",
@@ -349,17 +339,48 @@ REGLAS_AREA_TEXTO = {
         "interconsulta psiquiatrica","interconsulta psiquiátrica",
         "consulta psiquiatrica","consulta psiquiátrica",
         "atencion psiquiatrica","atención psiquiátrica",
+        "seguimiento psiquiatrico","seguimiento psiquiátrico",
+        "conducta psiquiatrica","conducta psiquiátrica",
+        "plan psicofarmacologico","plan psicofarmacológico",
+        "ajuste psicofarmacologico","ajuste psicofarmacológico",
         # abreviaturas
         "psiq.","psiq ","psiq:",
+        # antipsicóticos (altamente específicos de psiquiatría)
+        "haloperidol","risperidona","olanzapina","quetiapina","aripiprazol",
+        "clozapina","amisulprida","levomepromazina","ziprasidona","paliperidona",
+        # estabilizadores del ánimo
+        "valproato","valproico","carbonato de litio",
+        # benzodiazepinas de uso frecuente en internación psiquiátrica
+        "clonazepam","lorazepam",
+        # clases de medicación
+        "antipsicótico","antipsicotico","antipsicótica","antipsicotica",
+        "antipsicóticos","antipsicoticos","antipsicóticas","antipsicoticas",
+        "psicofármaco","psicofarmaco","psicofármacos","psicofarmacos",
+        "psicofarmacológico","psicofarmacologico",
+        "psicofarmacológica","psicofarmacologica",
+        "benzodiacepina","benzodiazepina","benzodiacepinas","benzodiazepinas",
+        "psicotrópico","psicotropico","psicotrópicos",
     ],
     "psicologia": [
         "psicologia","psicología","psicologa","psicólogo","psicóloga",
-        "espacio psicologico","espacio psicológico","intervencion psicologica"
+        "espacio psicologico","espacio psicológico","intervencion psicologica",
+        "intervencion psicológica","entrevista psicológica","entrevista psicologica",
+        "abordaje psicológico","abordaje psicologico",
+    ],
+    "terapia_ocupacional": [
+        "terapia ocupacional","terapista ocupacional","t.o.","to ","terapeuta ocupacional",
+        "taller de to","actividad de to","espacio de to","taller ocupacional",
+        "actividades de la vida diaria","avd","actividades ocupacionales"
     ],
     "trabajo_social": [
         "trabajo social","trabajadora social","trabajador social","ts ","t.s.",
         "informe social","visita domiciliaria","red vincular","recurso social",
         "situacion social","situación social"
+    ],
+    "acompanante_terapeutico": [
+        "acompañante terapeutico","acompañante terapéutico","acomp. terapeutico",
+        "acomp.terapeutico","at ","a.t.","tarea de at","rol del at","actividad con at",
+        "acompañamiento terapeutico","acompañamiento terapéutico"
     ],
     "enfermeria": [
         "nota de enfermeria","nota de enfermería","control de signos vitales",
