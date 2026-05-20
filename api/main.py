@@ -1,7 +1,9 @@
 import json
 import pathlib
+import io
 import httpx
 import chromadb
+import pypdf
 from chromadb.utils import embedding_functions
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,14 +91,46 @@ def rag_documentos():
             })
     return docs
 
+def _extraer_texto_pdf(contenido: bytes) -> str:
+    reader = pypdf.PdfReader(io.BytesIO(contenido))
+    return "".join(page.extract_text() or "" for page in reader.pages)
+
+def _indexar_documento(nombre: str, contenido: bytes, sufijo: str) -> int:
+    if sufijo == ".pdf":
+        texto = _extraer_texto_pdf(contenido)
+    elif sufijo == ".txt":
+        texto = contenido.decode("utf-8", errors="replace")
+    else:
+        return 0
+    texto = texto.strip()
+    if not texto:
+        return 0
+    stem = pathlib.Path(nombre).stem
+    chunks = [texto[i:i+500] for i in range(0, len(texto), 500)]
+    chunks = [c for c in chunks if c.strip()]
+    collection = get_collection()
+    collection.upsert(
+        documents=chunks,
+        ids=[f"{stem}_{j}" for j in range(len(chunks))],
+        metadatas=[{"fuente": nombre}] * len(chunks),
+    )
+    return len(chunks)
+
 @app.post("/rag/subir")
 async def rag_subir(archivo: UploadFile = File(...)):
     RAG_PROTOCOLOS_DIR.mkdir(parents=True, exist_ok=True)
-    destino = RAG_PROTOCOLOS_DIR / archivo.filename
+    sufijo = pathlib.Path(archivo.filename).suffix.lower()
+    if sufijo not in {".pdf", ".txt", ".docx"}:
+        raise HTTPException(status_code=400, detail=f"Formato no soportado: {sufijo}")
     contenido = await archivo.read()
+    destino = RAG_PROTOCOLOS_DIR / archivo.filename
     with open(destino, "wb") as out:
         out.write(contenido)
-    return {"archivo": archivo.filename, "estado": "guardado", "indexado": False}
+    try:
+        n_chunks = _indexar_documento(archivo.filename, contenido, sufijo)
+        return {"archivo": archivo.filename, "estado": "indexado", "indexado": True, "chunks": n_chunks}
+    except Exception as e:
+        return {"archivo": archivo.filename, "estado": "guardado_sin_indexar", "indexado": False, "error": str(e)}
 
 from bs4 import BeautifulSoup
 import xlrd, openpyxl, io
