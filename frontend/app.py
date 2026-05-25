@@ -16,6 +16,7 @@ modulo = st.sidebar.radio("Modulo", [
     "Interconsultas HCD",
     "Metricas HCD",
     "Resumen HCs",
+    "Auditoría",
     "Informe",
 ])
 
@@ -569,6 +570,160 @@ elif modulo == "Resumen HCs":
         "reporte_total_hcd.json",
         "application/json"
     )
+
+elif modulo == "Auditoría":
+    st.title("Auditoría clínica y trazabilidad")
+    st.caption("Estado del pipeline de procesamiento y calidad por historia clínica.")
+
+    import subprocess
+
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except Exception:
+        git_commit = "N/A"
+
+    reps_r = requests.get(f"{API}/hcd/reportes")
+    all_rows = reps_r.json() if reps_r.status_code == 200 else []
+
+    rt_r = requests.get(f"{API}/hcd/reporte-total")
+    reporte_t = rt_r.json() if rt_r.status_code == 200 else {}
+    casos = reporte_t.get("casos", [])
+
+    # Deduplicar por archivo: mismo criterio que reporte-total (MAX id)
+    seen_r = {}
+    for h in all_rows:
+        arch = h["archivo"]
+        if arch not in seen_r or h["id"] > seen_r[arch]["id"]:
+            seen_r[arch] = h
+    rows_dedup = list(seen_r.values())
+
+    # Candidatos, descartados, stale
+    candidatos_total = 0
+    intervenciones_total = 0
+    ics_total = 0
+    stale_rows = []
+
+    for h in rows_dedup:
+        try:
+            d = json.loads(h["resumen"])
+        except Exception:
+            stale_rows.append(h)
+            continue
+        total_pac = d.get("total_intervenciones", 0)
+        raw_pac = d.get("total_registros_raw", 0)
+        areas = d.get("intervenciones_por_area", {})
+        if not (total_pac > 0 and sum(areas.values()) == total_pac):
+            stale_rows.append(h)
+            continue
+        candidatos_total += raw_pac
+        intervenciones_total += total_pac
+        ics_total += len(d.get("interconsultas_detectadas", []))
+
+    descartados_total = candidatos_total - intervenciones_total
+
+    # Última fecha de procesamiento (de los válidos)
+    fechas_validas = []
+    for h in rows_dedup:
+        f = h.get("fecha", "")
+        if f and not f.startswith("{"):
+            fechas_validas.append(f[:19])
+    ultima_fecha = max(fechas_validas) if fechas_validas else "N/A"
+
+    # --- Expander de pipeline ---
+    with st.expander("🔍 Información del pipeline", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Versión del pipeline:** `1.0.0`")
+            st.markdown(f"**Commit activo:** `{git_commit}`")
+            st.markdown(f"**Último procesamiento:** `{ultima_fecha}`")
+        with col2:
+            st.markdown("**Modelo NLP:** TF-IDF + Logistic Regression")
+            st.markdown("**Accuracy:** 92.98%")
+            st.markdown("**Clasificador:** 4 capas (diccionario → reglas → NLP → fallback)")
+
+    # --- Métricas de auditoría ---
+    st.subheader("Resumen de procesamiento")
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("Pacientes válidos", len(casos))
+    m2.metric("Candidatos iniciales", candidatos_total)
+    m3.metric("Descartados", descartados_total)
+    m4.metric("Intervenciones finales", intervenciones_total)
+    m5.metric("ICs detectadas", ics_total)
+    m6.metric("Stale excluidos", len(stale_rows))
+
+    # --- Semáforo por HC ---
+    def _semaforo_hc(caso):
+        total = caso["total_intervenciones"]
+        dias = caso.get("dias_internacion") or 0
+        areas = caso.get("intervenciones_por_area", {})
+        enf = areas.get("enfermeria", 0)
+        psiq = areas.get("psiquiatria", 0)
+        pct_enf = enf / total * 100 if total else 0
+        tasa = total / dias if dias else 0
+        alertas = []
+        if pct_enf > 65:
+            alertas.append(f"Enfermería dominante ({pct_enf:.0f}%)")
+        if psiq == 0:
+            alertas.append("Psiquiatría sin registro")
+        if dias > 365:
+            alertas.append(f"Internación prolongada ({dias} días)")
+        if 0 < dias < 10 and tasa > 2.5:
+            alertas.append(f"HC muy corta con tasa alta ({tasa:.1f} int/día)")
+        return ("🟢", alertas) if not alertas else ("🟡", alertas)
+
+    st.subheader("Semáforo de calidad por HC")
+    filas_sem = []
+    for h in stale_rows:
+        filas_sem.append({
+            "Semáforo": "🔴",
+            "Paciente": h["codigo_paciente"],
+            "Archivo": h["archivo"][:45],
+            "Estado": "Inconsistente",
+            "Alertas": "Registro stale: esquema inconsistente, excluido del conteo",
+        })
+    for c in casos:
+        sem, alertas = _semaforo_hc(c)
+        filas_sem.append({
+            "Semáforo": sem,
+            "Paciente": c["codigo_paciente"],
+            "Archivo": c["archivo"][:45],
+            "Estado": "OK" if sem == "🟢" else "Revisar",
+            "Alertas": " | ".join(alertas) if alertas else "—",
+        })
+    if filas_sem:
+        st.dataframe(pd.DataFrame(filas_sem), use_container_width=True, hide_index=True)
+
+    # --- Alertas metodológicas ---
+    alertas_globales = []
+    for c in casos:
+        total = c["total_intervenciones"]
+        dias = c.get("dias_internacion") or 0
+        areas = c.get("intervenciones_por_area", {})
+        enf = areas.get("enfermeria", 0)
+        psiq = areas.get("psiquiatria", 0)
+        pct_enf = enf / total * 100 if total else 0
+        tasa = total / dias if dias else 0
+        pac = c["codigo_paciente"]
+        if pct_enf > 65:
+            alertas_globales.append(f"**{pac}** — Enfermería dominante: {pct_enf:.0f}% de las intervenciones.")
+        if psiq == 0:
+            alertas_globales.append(f"**{pac}** — Psiquiatría muy baja: 0 intervenciones clasificadas.")
+        if dias > 365:
+            alertas_globales.append(f"**{pac}** — Internación prolongada: {dias} días ({dias/365:.1f} años).")
+        if 0 < dias < 10 and tasa > 2.5:
+            alertas_globales.append(f"**{pac}** — HC muy corta con tasa alta: {dias} días, {tasa:.1f} int/día.")
+    for h in stale_rows:
+        alertas_globales.append(f"**{h['codigo_paciente']}** — Registro stale excluido ({h['archivo'][:40]}).")
+
+    st.subheader("Alertas metodológicas automáticas")
+    if alertas_globales:
+        for a in alertas_globales:
+            st.warning(a)
+    else:
+        st.success("No se detectaron alertas metodológicas en el dataset actual.")
 
 elif modulo == "Informe":
     st.title("Informe Final - JSON")
