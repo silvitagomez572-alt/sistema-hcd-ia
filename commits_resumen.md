@@ -11,7 +11,7 @@
 
 ## Commit
 
-**ID:** (pendiente — próximo commit)
+**ID:** e960294
 **Título:** feat: agrega auditoría clínica y trazabilidad del pipeline
 **Fecha:** 2026-05-25
 
