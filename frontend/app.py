@@ -654,24 +654,46 @@ elif modulo == "Auditoría":
     m5.metric("ICs detectadas", ics_total)
     m6.metric("Stale excluidos", len(stale_rows))
 
-    # --- Semáforo por HC ---
-    def _semaforo_hc(caso):
+    # Enriquecer casos con raw count y raw hash desde rows_dedup
+    raw_por_arch = {}
+    for h in rows_dedup:
+        try:
+            d = json.loads(h["resumen"])
+            raw_por_arch[h["archivo"]] = d.get("total_registros_raw", 0) or 0
+        except Exception:
+            raw_por_arch[h["archivo"]] = 0
+
+    # --- Semáforo calibrado ---
+    # 🔴 Inconsistente: stale/JSON inválido, duplicado real (mismo contenido)
+    # 🟡 Revisar: tasa < 0.3 int/día con internación > 30 días,
+    #             internación > 365 días,
+    #             densidad muy baja (raw < 25 con días > 60)
+    # 🟢 Consistente: ninguna condición anterior
+    # Psiquiatría = 0 NO es criterio de semáforo: se registra como observación clínica.
+
+    def _semaforo_hc(caso, todos_los_casos):
         total = caso["total_intervenciones"]
-        dias = caso.get("dias_internacion") or 0
+        dias  = caso.get("dias_internacion") or 0
         areas = caso.get("intervenciones_por_area", {})
-        enf = areas.get("enfermeria", 0)
-        psiq = areas.get("psiquiatria", 0)
-        pct_enf = enf / total * 100 if total else 0
-        tasa = total / dias if dias else 0
+        raw   = raw_por_arch.get(caso.get("archivo", ""), 0)
+        tasa  = round(total / dias, 3) if dias else None
+
+        # Duplicado real: otro caso con total, áreas e internación idénticos
+        for otro in todos_los_casos:
+            if otro["codigo_paciente"] == caso["codigo_paciente"]:
+                continue
+            if (otro["total_intervenciones"] == total
+                    and otro.get("intervenciones_por_area") == areas
+                    and otro.get("dias_internacion") == dias):
+                return "🔴", [f"Duplicado real de {otro['codigo_paciente']} — contenido idéntico"]
+
         alertas = []
-        if pct_enf > 65:
-            alertas.append(f"Enfermería dominante ({pct_enf:.0f}%)")
-        if psiq == 0:
-            alertas.append("Psiquiatría sin registro")
+        if tasa is not None and tasa < 0.3 and dias > 30:
+            alertas.append(f"Tasa muy baja ({tasa} int/día en {dias} días) — posible exportación parcial")
         if dias > 365:
-            alertas.append(f"Internación prolongada ({dias} días)")
-        if 0 < dias < 10 and tasa > 2.5:
-            alertas.append(f"HC muy corta con tasa alta ({tasa:.1f} int/día)")
+            alertas.append(f"Internación prolongada ({dias} días, {dias/365:.1f} años)")
+        if raw > 0 and raw < 25 and dias > 60:
+            alertas.append(f"Densidad de registro muy baja ({raw} bloques en {dias} días)")
         return ("🟢", alertas) if not alertas else ("🟡", alertas)
 
     st.subheader("Semáforo de calidad por HC")
@@ -682,48 +704,50 @@ elif modulo == "Auditoría":
             "Paciente": h["codigo_paciente"],
             "Archivo": h["archivo"][:45],
             "Estado": "Inconsistente",
-            "Alertas": "Registro stale: esquema inconsistente, excluido del conteo",
+            "Alertas": "Registro stale: excluido del conteo",
         })
     for c in casos:
-        sem, alertas = _semaforo_hc(c)
+        sem, alertas = _semaforo_hc(c, casos)
         filas_sem.append({
             "Semáforo": sem,
             "Paciente": c["codigo_paciente"],
             "Archivo": c["archivo"][:45],
-            "Estado": "OK" if sem == "🟢" else "Revisar",
+            "Estado": "Consistente" if sem == "🟢" else ("Inconsistente" if sem == "🔴" else "Revisar"),
             "Alertas": " | ".join(alertas) if alertas else "—",
         })
     if filas_sem:
         st.dataframe(pd.DataFrame(filas_sem), use_container_width=True, hide_index=True)
 
-    # --- Alertas metodológicas ---
+    # --- Alertas metodológicas calibradas ---
     alertas_globales = []
     for c in casos:
         total = c["total_intervenciones"]
-        dias = c.get("dias_internacion") or 0
-        areas = c.get("intervenciones_por_area", {})
-        enf = areas.get("enfermeria", 0)
-        psiq = areas.get("psiquiatria", 0)
-        pct_enf = enf / total * 100 if total else 0
-        tasa = total / dias if dias else 0
-        pac = c["codigo_paciente"]
-        if pct_enf > 65:
-            alertas_globales.append(f"**{pac}** — Enfermería dominante: {pct_enf:.0f}% de las intervenciones.")
-        if psiq == 0:
-            alertas_globales.append(f"**{pac}** — Psiquiatría muy baja: 0 intervenciones clasificadas.")
-        if dias > 365:
-            alertas_globales.append(f"**{pac}** — Internación prolongada: {dias} días ({dias/365:.1f} años).")
-        if 0 < dias < 10 and tasa > 2.5:
-            alertas_globales.append(f"**{pac}** — HC muy corta con tasa alta: {dias} días, {tasa:.1f} int/día.")
+        dias  = c.get("dias_internacion") or 0
+        raw   = raw_por_arch.get(c.get("archivo", ""), 0)
+        tasa  = round(total / dias, 3) if dias else None
+        pac   = c["codigo_paciente"]
+        sem, sem_alertas = _semaforo_hc(c, casos)
+        for a in sem_alertas:
+            alertas_globales.append((sem, f"**{pac}** — {a}"))
     for h in stale_rows:
-        alertas_globales.append(f"**{h['codigo_paciente']}** — Registro stale excluido ({h['archivo'][:40]}).")
+        alertas_globales.append(("🔴", f"**{h['codigo_paciente']}** — Registro stale excluido ({h['archivo'][:40]})."))
 
     st.subheader("Alertas metodológicas automáticas")
     if alertas_globales:
-        for a in alertas_globales:
-            st.warning(a)
+        for sem, texto in alertas_globales:
+            if sem == "🔴":
+                st.error(texto)
+            else:
+                st.warning(texto)
     else:
         st.success("No se detectaron alertas metodológicas en el dataset actual.")
+
+    st.caption(
+        "Criterios del semáforo: 🔴 stale o duplicado real · "
+        "🟡 tasa < 0.3/día con >30 días, internación >365 días, densidad de registro muy baja · "
+        "🟢 consistente. "
+        "La ausencia de intervenciones de psiquiatría no es criterio de inconsistencia."
+    )
 
 elif modulo == "Informe":
     st.title("Informe Final - JSON")
