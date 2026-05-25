@@ -664,12 +664,12 @@ elif modulo == "Auditoría":
             raw_por_arch[h["archivo"]] = 0
 
     # --- Semáforo calibrado ---
-    # 🔴 Inconsistente: stale/JSON inválido, duplicado real (mismo contenido)
-    # 🟡 Revisar: tasa < 0.3 int/día con internación > 30 días,
-    #             internación > 365 días,
-    #             densidad muy baja (raw < 25 con días > 60)
+    # 🔴 Inconsistente real: stale/JSON inválido, duplicado real (contenido idéntico)
+    # 🟡 Revisar cálculo/metodología: artefacto temporal VADIGU (tasa aparente baja),
+    #             internación > 365 días (outlier de duración)
     # 🟢 Consistente: ninguna condición anterior
-    # Psiquiatría = 0 NO es criterio de semáforo: se registra como observación clínica.
+    # NO son criterios: psiquiatría=0, enfermería dominante, HC corta con tasa alta
+    # (son patrones estructurales de VADIGU, no inconsistencias clínicas)
 
     def _semaforo_hc(caso, todos_los_casos):
         total = caso["total_intervenciones"]
@@ -678,7 +678,7 @@ elif modulo == "Auditoría":
         raw   = raw_por_arch.get(caso.get("archivo", ""), 0)
         tasa  = round(total / dias, 3) if dias else None
 
-        # Duplicado real: otro caso con total, áreas e internación idénticos
+        # 🔴 Duplicado real: otro caso con total, áreas e internación idénticos
         for otro in todos_los_casos:
             if otro["codigo_paciente"] == caso["codigo_paciente"]:
                 continue
@@ -688,12 +688,16 @@ elif modulo == "Auditoría":
                 return "🔴", [f"Duplicado real de {otro['codigo_paciente']} — contenido idéntico"]
 
         alertas = []
+        # 🟡 Tasa aparente muy baja: probable artefacto del rango de fechas VADIGU
         if tasa is not None and tasa < 0.3 and dias > 30:
-            alertas.append(f"Tasa muy baja ({tasa} int/día en {dias} días) — posible exportación parcial")
+            alertas.append(
+                f"Revisar cálculo temporal: posible artefacto por rango VADIGU "
+                f"({tasa} int/día en {dias} días aparentes — el período puede incluir "
+                f"múltiples episodios cortos, no una internación continua)"
+            )
+        # 🟡 Internación prolongada: outlier de duración, requiere verificación
         if dias > 365:
-            alertas.append(f"Internación prolongada ({dias} días, {dias/365:.1f} años)")
-        if raw > 0 and raw < 25 and dias > 60:
-            alertas.append(f"Densidad de registro muy baja ({raw} bloques en {dias} días)")
+            alertas.append(f"Internación prolongada ({dias} días, {dias/365:.1f} años) — verificar completitud del registro")
         return ("🟢", alertas) if not alertas else ("🟡", alertas)
 
     st.subheader("Semáforo de calidad por HC")
@@ -743,10 +747,12 @@ elif modulo == "Auditoría":
         st.success("No se detectaron alertas metodológicas en el dataset actual.")
 
     st.caption(
-        "Criterios del semáforo: 🔴 stale o duplicado real · "
-        "🟡 tasa < 0.3/día con >30 días, internación >365 días, densidad de registro muy baja · "
-        "🟢 consistente. "
-        "La ausencia de intervenciones de psiquiatría no es criterio de inconsistencia."
+        "Criterios del semáforo: "
+        "🔴 Inconsistente real (stale o duplicado exacto) · "
+        "🟡 Revisar cálculo/metodología (artefacto temporal VADIGU, internación >365 días) · "
+        "🟢 Consistente. "
+        "No son criterios: psiquiatría=0, enfermería dominante, HC corta con tasa alta "
+        "(son patrones estructurales del formato VADIGU)."
     )
 
 elif modulo == "Informe":
