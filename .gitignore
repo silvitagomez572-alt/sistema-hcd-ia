@@ -1,3 +1,40 @@
+# Entorno virtual
 .venv/
+venv/
+
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Bases de datos y vectorstores
+*.db
+*.sqlite
+*.sqlite3
+rag/db/
+
+# Modelos serializados
+*.pkl
+
+# Archivos de pacientes originales y salidas con datos
+*.xls
+*.xlsx
+outputs/*.csv
+outputs/*.xlsx
+
+# Secretos y configuración local
+.env
+.env.local
+credentials.json
+secrets.json
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
