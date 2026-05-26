@@ -18,7 +18,7 @@ Incluye:
 
 - API REST desarrollada con FastAPI (procesamiento NLP, métricas, interconsultas)
 - Frontend Streamlit con 11 módulos clínicos
-- Clasificador híbrido de 4 capas entrenado con datos reales
+- Clasificador híbrido de 4 capas evaluado sobre historias clínicas reales pseudonimizadas.
 - Módulo RAG (ChromaDB + SentenceTransformer) sobre protocolos clínicos
 - LLM local (Gemma 2B vía Ollama) para resúmenes clínicos
 - Auditoría clínica con semáforo de calidad por HC
@@ -42,7 +42,7 @@ sistema-hcd-ia/
 │   ├── ocr/                       # OCR en desarrollo
 │   ├── llm/                       # Scripts LLM local
 │   └── pseudonimizacion/          # Utilidades de anonimización
-├── training/                      # (ver pipeline/)
+├── training/                      # (implementado actualmente dentro de pipeline/)
 ├── artifacts/
 │   ├── modelo_area_intervenciones.pkl   # Clasificador NLP serializado
 │   └── outputs/                   # Validaciones y reportes exportados
@@ -151,9 +151,9 @@ Ver `docs/version_estable_pre_entrega.md` para el detalle completo del dataset, 
 
 ---
 
-## Estado del RAG (hipótesis de trabajo)
+## Estado actual del módulo RAG
 
-El módulo RAG indexa protocolos clínicos en ChromaDB (`rag/db/`). Los protocolos fuente están en `rag/protocolos/`. La indexación se realiza con `pipeline/rag/indexar.py`. El módulo está activo pero la calidad de las respuestas depende de la cobertura de los protocolos indexados.
+El módulo RAG indexa protocolos clínicos en ChromaDB (`rag/db/`). Los protocolos fuente están en `rag/protocolos/`. La indexación se realiza con `pipeline/rag/indexar.py`. El módulo RAG se encuentra integrado a nivel de arquitectura e indexación documental. La validación clínica y evaluación sistemática continúan en desarrollo.
 
 ---
 
