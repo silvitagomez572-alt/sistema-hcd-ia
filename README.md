@@ -10,6 +10,24 @@ Implementar un sistema de análisis automático de historias clínicas digitales
 
 ---
 
+## Autora y perfil profesional
+
+Lic. en Química Silvia Andrea Gómez Villagra
+
+Profesional con formación en química y gestión de calidad. Actualmente se desempeña en un hospital público y trabaja en la integración de herramientas de inteligencia artificial orientadas a automatización, análisis de información y apoyo a procesos hospitalarios.
+
+Formación:
+
+- Licenciada en Química
+- Auditora Trinorma:
+  - ISO 9001 — Gestión de Calidad
+  - ISO 14001 — Gestión Ambiental
+  - ISO 45001 — Seguridad y Salud Ocupacional
+
+Este proyecto se desarrolla como parte del Trabajo Final Integrador de Inteligencia Artificial Generativa de la Universidad Nacional de Luján (UNLu), con enfoque en procesamiento y análisis de historias clínicas digitales y generación automatizada de información para apoyo a la gestión hospitalaria.
+
+---
+
 ## Descripción del sistema
 
 El sistema procesa archivos exportados del HMIS VADIGU (formato XLS/HTML), extrae bloques de texto clínico, los clasifica por área profesional mediante un clasificador híbrido (diccionario + keywords + TF-IDF/Logistic Regression), y produce métricas de actividad asistencial por paciente.
