@@ -145,9 +145,13 @@ Ver `docs/version_estable_pre_entrega.md` para el detalle completo del dataset, 
 ## Datos sensibles — advertencia
 
 - Los archivos de HC originales (`.xls`) **no están versionados** en este repositorio.
-- `hcs.db` contiene texto extraído de historias clínicas. No exponer en entornos públicos.
+- `hcs.db` **no se versiona** en el repositorio público; debe generarse localmente a partir de datos pseudonimizados ejecutando el pipeline de procesamiento.
+- El vectorstore ChromaDB (`rag/db/`) **no se versiona**; debe regenerarse localmente con `pipeline/rag/indexar.py`.
+- Los archivos de salida en `outputs/` **no se versionan**.
 - La API **no devuelve `texto_extraido`** en ningún endpoint para proteger datos del paciente.
 - Los pacientes se identifican únicamente como `PAC-{id:03d}` en toda la documentación y salidas del sistema.
+
+Ver `docs/seguridad_datos.md` para la política completa de datos del repositorio.
 
 ---
 
