@@ -35,6 +35,14 @@ Incluye:
 
 ---
 
+## Módulos en desarrollo
+
+- Relevamiento semántico interdisciplinario en Salud Mental mediante encuesta estructurada a profesionales.
+- Integración de resultados al módulo RAG para ampliar vocabulario clínico, disminuir sesgos y mejorar la detección contextual de términos utilizados por distintas áreas profesionales.
+- Uso previsto: enriquecimiento de la base documental y optimización de recuperación semántica clínica.
+
+---
+
 ## Arquitectura
 
 ```
