@@ -4,3 +4,16 @@ streamlit
 requests
 pandas
 python-multipart
+beautifulsoup4
+pypdf
+openpyxl
+xlrd
+chromadb
+sentence-transformers
+httpx
+joblib
+scikit-learn
+pillow
+pytesseract
+pdf2image
+lxml
