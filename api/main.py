@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 import io
 import httpx
@@ -11,6 +12,8 @@ import datetime as dt_module
 from zoneinfo import ZoneInfo
 
 AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma:2b")
 BASE_DIR = pathlib.Path(__file__).resolve().parent
 HCD_PATH = BASE_DIR / "hcd" / "data" / "json_maestro_hc_salud_mental.json"
 
@@ -23,7 +26,7 @@ def load_hcd():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "time": datetime.datetime.now().isoformat()}
+    return {"status": "ok", "time": dt_module.datetime.now(AR_TZ).isoformat()}
 
 @app.get("/hcd/summary")
 def hcd_summary():
@@ -42,7 +45,7 @@ def hcd_metricas():
 async def llm_consultar(payload: dict):
     pregunta = payload.get("pregunta", "")
     async with httpx.AsyncClient(timeout=300) as client:
-        r = await client.post("http://localhost:11434/api/generate", json={"model": "gemma:2b", "prompt": f"Eres un asistente clinico hospitalario. Responde en espanol. {pregunta}", "stream": False})
+        r = await client.post(f"{OLLAMA_URL}/api/generate", json={"model": OLLAMA_MODEL, "prompt": f"Eres un asistente clinico hospitalario. Responde en espanol. {pregunta}", "stream": False})
         data = r.json()
         return {"respuesta": data.get("response", "")}
 
@@ -65,7 +68,7 @@ async def rag_consultar(payload: dict):
     contexto = resultados["documents"][0][0][:500]
     prompt = f"Contexto: {contexto}. Pregunta breve: {pregunta}. Responde en 2 oraciones en espanol."
     async with httpx.AsyncClient(timeout=300) as client:
-        r = await client.post("http://localhost:11434/api/generate", json={"model": "gemma:2b", "prompt": prompt, "stream": False})
+        r = await client.post(f"{OLLAMA_URL}/api/generate", json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False})
         data = r.json()
         return {"respuesta": data.get("response", ""), "fuentes": resultados["metadatas"][0]}
 
@@ -163,7 +166,7 @@ async def procesar_hc(archivo: UploadFile = File(...)):
 Historia clinica: {texto}
 Responde de forma estructurada y breve."""
     async with httpx.AsyncClient(timeout=300) as client:
-        r = await client.post("http://localhost:11434/api/generate", json={"model": "gemma:2b", "prompt": prompt, "stream": False})
+        r = await client.post(f"{OLLAMA_URL}/api/generate", json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False})
         data = r.json()
         resumen = data.get("response", "")
         con = sqlite3.connect(DB_PATH)
@@ -292,6 +295,42 @@ def limpiar_duplicados():
     con.commit()
     con.close()
     return {"eliminados": eliminados}
+
+@app.delete("/hcd/reportes/limpiar")
+def limpiar_reportes():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("DELETE FROM hcs_procesadas")
+    eliminados = con.total_changes
+    con.commit()
+    con.close()
+    return {"eliminados": eliminados}
+
+@app.get("/hcd/reportes/{id}/json")
+def reporte_json(id: int):
+    con = sqlite3.connect(DB_PATH)
+    row = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas WHERE id = ?", (id,)).fetchone()
+    con.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+    try:
+        resumen = json.loads(row[2])
+    except Exception:
+        resumen = {"resumen": row[2]}
+    return {"id": row[0], "archivo": row[1], "fecha": row[3], "datos": resumen}
+
+@app.get("/hcd/reportes/exportar")
+def exportar_reportes():
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute("SELECT id, archivo, resumen, texto_extraido, fecha FROM hcs_procesadas ORDER BY fecha DESC").fetchall()
+    con.close()
+    resultado = []
+    for r in rows:
+        try:
+            resumen = json.loads(r[2])
+        except Exception:
+            resumen = {"resumen": r[2]}
+        resultado.append({"id": r[0], "archivo": r[1], "datos": resumen, "texto_extraido": r[3], "fecha": r[4]})
+    return resultado
 
 
 import hashlib
@@ -438,26 +477,32 @@ REGLAS_AREA_TEXTO = {
         "psicofarmacológica","psicofarmacologica",
         "benzodiacepina","benzodiazepina","benzodiacepinas","benzodiazepinas",
         "psicotrópico","psicotropico","psicotrópicos",
+        # entrevista y valoración clínica
+        "se realiza entrevista directa","se realiza entrevista indirecta",
+        "descripcion semiologica","estado psiquico","otep",
+        "orientado globalmente","no puede ser entrevistado",
+        "manifiesta rechazo al tratamiento",
     ],
     "psicologia": [
         "psicologia","psicología","psicologa","psicólogo","psicóloga",
         "espacio psicologico","espacio psicológico","intervencion psicologica",
         "intervencion psicológica","entrevista psicológica","entrevista psicologica",
         "abordaje psicológico","abordaje psicologico",
+        "se realiza contencion","con conciencia de enfermedad","sin conciencia de enfermedad",
     ],
     "terapia_ocupacional": [
-        "terapia ocupacional","terapista ocupacional","t.o.","to ","terapeuta ocupacional",
+        "terapia ocupacional","terapista ocupacional","t.o.","terapeuta ocupacional",
         "taller de to","actividad de to","espacio de to","taller ocupacional",
         "actividades de la vida diaria","avd","actividades ocupacionales"
     ],
     "trabajo_social": [
-        "trabajo social","trabajadora social","trabajador social","ts ","t.s.",
+        "trabajo social","trabajadora social","trabajador social","t.s.",
         "informe social","visita domiciliaria","red vincular","recurso social",
         "situacion social","situación social"
     ],
     "acompanante_terapeutico": [
         "acompañante terapeutico","acompañante terapéutico","acomp. terapeutico",
-        "acomp.terapeutico","at ","a.t.","tarea de at","rol del at","actividad con at",
+        "acomp.terapeutico","a.t.","tarea de at","rol del at","actividad con at",
         "acompañamiento terapeutico","acompañamiento terapéutico"
     ],
     "enfermeria": [

@@ -18,7 +18,7 @@ def test_reporte_total_responde():
     response = client.get("/hcd/reporte-total")
     assert response.status_code == 200
     data = response.json()
-    assert "total_intervenciones" in data or "pacientes" in data
+    assert "total_intervenciones" in data.get("resumen_ejecutivo", {})
 
 
 def test_reportes_lista():
