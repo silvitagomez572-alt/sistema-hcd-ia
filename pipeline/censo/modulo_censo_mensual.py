@@ -108,41 +108,92 @@ def _texto_pdf_a_df(texto: str) -> pd.DataFrame:
 
 def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
     """
-    Extrae la tabla del censo usando pdfplumber, que mantiene la estructura
-    de columnas incluso en PDFs con texto compacto o sin separadores claros.
+    Parser para el censo VADIGU donde la tabla está dividida verticalmente en dos
+    grupos de páginas:
+      - Páginas "izquierda": Cama, Estado, Area, Paciente, Edad, Documento
+      - Páginas "derecha":   codigoHC, Ingreso, Estada, ObraSocial
+
+    Las páginas se identifican automáticamente por sus cabeceras y se unen por
+    índice de fila (mismo orden de pacientes en ambos grupos).
     """
-    todas_filas: list[list] = []
-    cabeceras: list[str] | None = None
+    # Sets de columnas que identifican cada mitad del informe
+    _FIRMAS_IZQ = {"cama", "estado", "area", "paciente"}
+    _FIRMAS_DER = {"codigohc", "codigo hc", "ingreso", "estada"}
+
+    def _extraer_pagina(pagina) -> tuple[list[str] | None, list[list[str]]]:
+        """Devuelve (cabeceras, filas_datos) de la primera tabla válida de la página."""
+        for tabla in pagina.extract_tables():
+            if not tabla:
+                continue
+            for idx, fila in enumerate(tabla):
+                celdas = [str(c or "").strip() for c in fila]
+                cab_lower = {c.lower() for c in celdas if c}
+                if cab_lower & _FIRMAS_IZQ or cab_lower & _FIRMAS_DER:
+                    filas_datos = [
+                        [str(c or "").strip() for c in f]
+                        for f in tabla[idx + 1:]
+                        if any(c for c in f)
+                    ]
+                    return celdas, filas_datos
+        return None, []
+
+    filas_izq: list[list[str]] = []
+    cols_izq: list[str] | None = None
+    filas_der: list[list[str]] = []
+    cols_der: list[str] | None = None
 
     with pdfplumber.open(str(ruta)) as pdf:
         for pagina in pdf.pages:
-            tablas = pagina.extract_tables()
-            for tabla in tablas:
-                if not tabla:
-                    continue
-                # La primera fila con "Cama" y "Estado" es la cabecera
-                for idx_fila, fila in enumerate(tabla):
-                    fila_norm = [str(c or "").strip() for c in fila]
-                    if cabeceras is None:
-                        if any(re.search(r'\bCama\b', c, re.IGNORECASE) for c in fila_norm) and \
-                           any(re.search(r'\bEstado\b', c, re.IGNORECASE) for c in fila_norm):
-                            cabeceras = fila_norm
-                        continue
-                    # Fila de datos: descartar filas completamente vacías
-                    if any(c for c in fila_norm):
-                        todas_filas.append(fila_norm)
+            cabeceras, filas = _extraer_pagina(pagina)
+            if not cabeceras:
+                continue
+            cab_lower = {c.lower() for c in cabeceras if c}
+            if cab_lower & _FIRMAS_IZQ:
+                cols_izq = cols_izq or cabeceras
+                filas_izq.extend(filas)
+            elif cab_lower & _FIRMAS_DER:
+                cols_der = cols_der or cabeceras
+                filas_der.extend(filas)
 
-    if cabeceras is None or not todas_filas:
+    if cols_izq is None and cols_der is None:
         return pd.DataFrame()
 
-    # Alinear columnas: recortar o rellenar para que coincidan con cabeceras
-    n = len(cabeceras)
-    filas_alineadas = [f[:n] + [""] * max(0, n - len(f)) for f in todas_filas]
-    df = pd.DataFrame(filas_alineadas, columns=cabeceras)
+    def _a_df(cols: list[str] | None, filas: list[list[str]]) -> pd.DataFrame:
+        if not cols or not filas:
+            return pd.DataFrame()
+        n = len(cols)
+        alineadas = [f[:n] + [""] * max(0, n - len(f)) for f in filas]
+        return pd.DataFrame(alineadas, columns=cols)
 
-    # Mapear cabeceras detectadas a COLUMNAS_ESPERADAS cuando difieren en acento/case
-    _alias = {c.lower(): c for c in COLUMNAS_ESPERADAS}
-    df = df.rename(columns={c: _alias[c.lower()] for c in df.columns if c.lower() in _alias})
+    df_izq = _a_df(cols_izq, filas_izq)
+    df_der = _a_df(cols_der, filas_der)
+
+    # Unir por índice de fila; si solo hay una mitad usar la que existe
+    if df_izq.empty and df_der.empty:
+        return pd.DataFrame()
+    if df_izq.empty:
+        df = df_der
+    elif df_der.empty:
+        df = df_izq
+    else:
+        # Usar el mínimo de filas para no generar filas huérfanas
+        n_filas = min(len(df_izq), len(df_der))
+        df = pd.concat(
+            [df_izq.iloc[:n_filas].reset_index(drop=True),
+             df_der.iloc[:n_filas].reset_index(drop=True)],
+            axis=1,
+        )
+
+    # Normalizar nombres de columnas a COLUMNAS_ESPERADAS
+    _alias = {
+        **{c.lower(): c for c in COLUMNAS_ESPERADAS},
+        "codigohc": "codigoHC",
+        "codigo hc": "codigoHC",
+        "área": "Area",
+        "obrasocial": "ObraSocial",
+        "obra social": "ObraSocial",
+    }
+    df = df.rename(columns={c: _alias.get(c.lower(), c) for c in df.columns})
     return df
 
 
