@@ -106,6 +106,74 @@ def _texto_pdf_a_df(texto: str) -> pd.DataFrame:
     return pd.DataFrame(filas, columns=COLUMNAS_ESPERADAS)
 
 
+def _limpiar_filas_pdf(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Corrige los artefactos de extracción que produce pdfplumber con el PDF de VADIGU,
+    donde las columnas son demasiado estrechas y el texto desborda hacia celdas adyacentes.
+
+    Correcciones aplicadas:
+    - Paciente: el nombre largo desborda hacia Edad; se reconstruye tomando todos los
+      caracteres alfabéticos antes del primer dígito del string concatenado.
+    - Edad: los dígitos del nombre overflow quedan mezclados; se extraen solo los dígitos
+      del campo Edad original y se concatenan para obtener la edad numérica.
+    - Ingreso: la hora queda truncada y sangra en Estada; se extrae solo DD/MM/YYYY.
+    - Estada: contiene fragmento de hora de Ingreso; se extrae el último entero (días).
+    - Documento: texto mezclado con el DNI; se extrae preferentemente desde codigoHC
+      (formato NNN-DNINUMBER-N) y como fallback desde el campo raw.
+    """
+    df = df.copy()
+
+    # Paciente + Edad: reconstruir nombre y edad
+    if "Paciente" in df.columns and "Edad" in df.columns:
+        nombres, edades = [], []
+        for _, fila in df.iterrows():
+            pac_raw = str(fila.get("Paciente") or "").strip()
+            edad_raw = str(fila.get("Edad") or "").strip()
+            combinado = pac_raw + edad_raw
+            # Nombre: parte alfabética (letras, espacios, comas, tildes, guiones)
+            m = re.match(r'^([A-ZÁÉÍÓÚÑÜA-Záéíóúñüa-z,\s\.\-]+?)(?=\d)', combinado)
+            nombre = m.group(1).strip().rstrip(",").strip() if m else combinado.strip()
+            # Edad: concatenar todos los dígitos del campo Edad original
+            edad = "".join(re.findall(r'\d', edad_raw)) or ""
+            nombres.append(nombre)
+            edades.append(edad)
+        df["Paciente"] = nombres
+        df["Edad"] = edades
+
+    # Ingreso: extraer DD/MM/YYYY
+    if "Ingreso" in df.columns:
+        def _limpiar_ingreso(raw: str) -> str:
+            m = re.search(r'(\d{1,2}/\d{2}/\d{4})', str(raw or ""))
+            return m.group(1) if m else str(raw or "").strip()
+        df["Ingreso"] = df["Ingreso"].map(_limpiar_ingreso)
+
+    # Estada: extraer el último entero (días de internación)
+    if "Estada" in df.columns:
+        def _limpiar_estada(raw: str) -> str:
+            nums = re.findall(r'\d+', str(raw or ""))
+            return nums[-1] if nums else str(raw or "").strip()
+        df["Estada"] = df["Estada"].map(_limpiar_estada)
+
+    # Documento: extraer DNI preferentemente desde codigoHC
+    if "Documento" in df.columns:
+        def _limpiar_documento(doc_raw: str, codigo_hc: str) -> str:
+            # codigoHC tiene formato NNN-DNINUMBER-N, es la fuente más confiable
+            m_hc = re.search(r'-(\d{6,9})-', str(codigo_hc or ""))
+            if m_hc:
+                return f"DNI {m_hc.group(1)}"
+            # Fallback: primer número de 7-8 dígitos en el campo raw
+            m_doc = re.search(r'\b(\d{7,8})\b', str(doc_raw or ""))
+            if m_doc:
+                return f"DNI {m_doc.group(1)}"
+            return str(doc_raw or "").strip()
+        hc_col = df["codigoHC"] if "codigoHC" in df.columns else pd.Series([""] * len(df))
+        df["Documento"] = [
+            _limpiar_documento(d, h) for d, h in zip(df["Documento"], hc_col)
+        ]
+
+    return df
+
+
 def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
     """
     Parser para el censo VADIGU donde la tabla está dividida verticalmente en dos
@@ -115,13 +183,12 @@ def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
 
     Las páginas se identifican automáticamente por sus cabeceras y se unen por
     índice de fila (mismo orden de pacientes en ambos grupos).
+    Aplica _limpiar_filas_pdf para corregir artefactos de columnas truncadas.
     """
-    # Sets de columnas que identifican cada mitad del informe
     _FIRMAS_IZQ = {"cama", "estado", "area", "paciente"}
     _FIRMAS_DER = {"codigohc", "codigo hc", "ingreso", "estada"}
 
     def _extraer_pagina(pagina) -> tuple[list[str] | None, list[list[str]]]:
-        """Devuelve (cabeceras, filas_datos) de la primera tabla válida de la página."""
         for tabla in pagina.extract_tables():
             if not tabla:
                 continue
@@ -168,7 +235,6 @@ def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
     df_izq = _a_df(cols_izq, filas_izq)
     df_der = _a_df(cols_der, filas_der)
 
-    # Unir por índice de fila; si solo hay una mitad usar la que existe
     if df_izq.empty and df_der.empty:
         return pd.DataFrame()
     if df_izq.empty:
@@ -176,7 +242,6 @@ def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
     elif df_der.empty:
         df = df_izq
     else:
-        # Usar el mínimo de filas para no generar filas huérfanas
         n_filas = min(len(df_izq), len(df_der))
         df = pd.concat(
             [df_izq.iloc[:n_filas].reset_index(drop=True),
@@ -184,7 +249,6 @@ def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
             axis=1,
         )
 
-    # Normalizar nombres de columnas a COLUMNAS_ESPERADAS
     _alias = {
         **{c.lower(): c for c in COLUMNAS_ESPERADAS},
         "codigohc": "codigoHC",
@@ -194,7 +258,7 @@ def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
         "obra social": "ObraSocial",
     }
     df = df.rename(columns={c: _alias.get(c.lower(), c) for c in df.columns})
-    return df
+    return _limpiar_filas_pdf(df)
 
 
 def _leer_pdf(ruta: pathlib.Path) -> pd.DataFrame:
