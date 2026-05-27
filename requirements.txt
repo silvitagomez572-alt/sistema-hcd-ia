@@ -16,4 +16,5 @@ scikit-learn
 pillow
 pytesseract
 pdf2image
+pdfplumber
 lxml
