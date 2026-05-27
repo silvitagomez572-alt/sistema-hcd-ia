@@ -110,7 +110,31 @@ if modulo == "📋 Censo Mensual":
                 _cols_mostrar = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area"] if c in _df_cons2.columns]
                 if _cols_mostrar:
                     st.subheader("Pacientes internados — Salud Mental")
-                    st.dataframe(_df_cons2[_cols_mostrar], use_container_width=True, hide_index=True)
+                    _df_tabla = _df_cons2[_cols_mostrar].copy()
+                    # Deduplicar por codigoHC conservando el registro con mayor Estada
+                    if "codigoHC" in _df_tabla.columns and "Estada" in _df_tabla.columns:
+                        _df_tabla["Estada"] = pd.to_numeric(_df_tabla["Estada"], errors="coerce").fillna(0)
+                        _df_tabla = (
+                            _df_tabla
+                            .sort_values("Estada", ascending=False)
+                            .drop_duplicates(subset=["codigoHC"], keep="first")
+                            .sort_values("Estada", ascending=False)
+                            .reset_index(drop=True)
+                        )
+                        _df_tabla["Estada"] = _df_tabla["Estada"].astype(int).astype(str)
+                    st.dataframe(
+                        _df_tabla,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Paciente":   st.column_config.TextColumn("Paciente",   width="large"),
+                            "Documento":  st.column_config.TextColumn("Documento",  width="medium"),
+                            "codigoHC":   st.column_config.TextColumn("codigoHC",   width="medium"),
+                            "Ingreso":    st.column_config.TextColumn("Ingreso",    width="small"),
+                            "Estada":     st.column_config.TextColumn("Estada",     width="small"),
+                            "Area":       st.column_config.TextColumn("Area",       width="medium"),
+                        },
+                    )
 
     with tab_stats:
         st.subheader("Estadísticas del mes")
