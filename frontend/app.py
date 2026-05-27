@@ -7,6 +7,7 @@ API = "http://localhost:8001"
 st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
 modulo = st.sidebar.radio("Modulo", [
+    "📋 Censo Mensual",
     "Ingresar HC",
     "OCR",
     "Pseudonimizacion",
@@ -20,7 +21,200 @@ modulo = st.sidebar.radio("Modulo", [
     "Informe",
 ])
 
-if modulo == "Ingresar HC":
+if modulo == "📋 Censo Mensual":
+    import sys as _sys
+    import pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    try:
+        from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental
+        _censo_ok = True
+    except ImportError as _e:
+        _censo_ok = False
+        _censo_err = str(_e)
+
+    st.title("📋 Censo Mensual — Salud Mental")
+
+    if not _censo_ok:
+        st.error(f"Módulo de censo no disponible: {_censo_err}")
+        st.stop()
+
+    for _k in ("censo_df", "censo_raw_stats"):
+        if _k not in st.session_state:
+            st.session_state[_k] = None
+
+    tab_carga, tab_stats, tab_pendientes = st.tabs(
+        ["📥 Cargar Censos", "📊 Estadísticas", "⏳ Pendientes"]
+    )
+
+    with tab_carga:
+        st.subheader("Cargar archivos de censo VADIGU")
+        archivos_cargados = st.file_uploader(
+            "Seleccionar uno o varios archivos del mes",
+            type=["csv", "xlsx", "xls", "html", "htm", "pdf"],
+            accept_multiple_files=True,
+            key="censo_uploader",
+        )
+
+        if archivos_cargados and st.button("Consolidar mes", key="censo_btn"):
+            import tempfile
+            fragmentos, stats_lista, errores = [], [], []
+            with tempfile.TemporaryDirectory() as _tmpdir:
+                for _arch in archivos_cargados:
+                    _ruta_tmp = _pl.Path(_tmpdir) / _arch.name
+                    _ruta_tmp.write_bytes(_arch.getvalue())
+                    try:
+                        _df_raw = leer_archivo_censo(_ruta_tmp)
+                        _total_c = len(_df_raw)
+                        _ocu = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "ocupada").sum()) if "Estado" in _df_raw.columns else 0
+                        _lib = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "libre").sum()) if "Estado" in _df_raw.columns else 0
+                        _sm_ocu = len(filtrar_salud_mental(_df_raw))
+                        stats_lista.append({"Archivo": _arch.name, "Total camas": _total_c, "Ocupadas": _ocu, "Libres": _lib, "SM Ocupadas": _sm_ocu})
+                        _df_sm = filtrar_salud_mental(_df_raw)
+                        if not _df_sm.empty:
+                            _df_sm = _df_sm.copy()
+                            _df_sm["_archivo"] = _arch.name
+                            fragmentos.append(_df_sm)
+                    except Exception as _exc:
+                        errores.append((_arch.name, str(_exc)))
+
+            for _nombre, _msg in errores:
+                st.warning(f"⚠️ {_nombre}: {_msg}")
+
+            if fragmentos:
+                _df_cons = pd.concat(fragmentos, ignore_index=True)
+                if "codigoHC" in _df_cons.columns:
+                    if "Ingreso" in _df_cons.columns:
+                        _df_cons["Ingreso"] = pd.to_datetime(_df_cons["Ingreso"], dayfirst=True, errors="coerce")
+                        _df_cons = _df_cons.sort_values("Ingreso", na_position="first")
+                    _df_cons = _df_cons.drop_duplicates(subset=["codigoHC"], keep="last").reset_index(drop=True)
+                st.session_state["censo_df"] = _df_cons
+                st.session_state["censo_raw_stats"] = pd.DataFrame(stats_lista)
+                st.success(f"{len(archivos_cargados)} archivo(s) → {len(_df_cons)} pacientes únicos en Salud Mental.")
+            else:
+                st.warning("No se encontraron filas con Estado=Ocupada y Area=Salud Mental.")
+
+        if st.session_state["censo_raw_stats"] is not None:
+            _df_st = st.session_state["censo_raw_stats"]
+            _df_cons2 = st.session_state["censo_df"]
+            _n_sm = len(_df_cons2) if _df_cons2 is not None else 0
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Internados SM (únicos/mes)", _n_sm)
+            c2.metric("Pico camas ocupadas (hospital)", int(_df_st["Ocupadas"].max()))
+            c3.metric("Pico camas libres (hospital)", int(_df_st["Libres"].max()))
+            st.subheader("Detalle por archivo")
+            st.dataframe(_df_st, use_container_width=True, hide_index=True)
+
+    with tab_stats:
+        st.subheader("Estadísticas del mes")
+        _df_censo = st.session_state["censo_df"]
+        if _df_censo is None or _df_censo.empty:
+            st.info("Primero cargá los archivos en la pestaña **📥 Cargar Censos**.")
+        else:
+            _df_st2 = st.session_state.get("censo_raw_stats")
+            _n_pac = len(_df_censo)
+
+            _porc_ocu = None
+            if _df_st2 is not None and _df_st2["Total camas"].sum() > 0:
+                _porc_ocu = round(100 * _df_st2["SM Ocupadas"].sum() / _df_st2["Total camas"].sum(), 1)
+
+            _prom_estada = None
+            if "Estada" in _df_censo.columns:
+                _estada_num = pd.to_numeric(_df_censo["Estada"], errors="coerce").dropna()
+                if not _estada_num.empty:
+                    _prom_estada = round(float(_estada_num.mean()), 1)
+
+            _giro = None
+            if _df_st2 is not None and _df_st2["SM Ocupadas"].max() > 0:
+                _giro = round(_n_pac / _df_st2["SM Ocupadas"].max(), 2)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Total pacientes SM", _n_pac)
+            c2.metric("% Ocupación SM", f"{_porc_ocu}%" if _porc_ocu is not None else "N/D")
+            c3.metric("Promedio estada (días)", _prom_estada if _prom_estada is not None else "N/D")
+            c4.metric("Giro camas", _giro if _giro is not None else "N/D")
+
+            if _df_st2 is not None and len(_df_st2) > 1:
+                import altair as alt
+                import re as _re2
+                def _ext_fecha(nombre):
+                    _m = _re2.search(r'(\d{2}[-_/]\d{2}[-_/]\d{4}|\d{4}[-_/]\d{2}[-_/]\d{2})', nombre)
+                    return _m.group(1).replace("_", "/").replace("-", "/") if _m else nombre
+                _df_chart = _df_st2[["Archivo", "SM Ocupadas"]].copy()
+                _df_chart["Día"] = _df_chart["Archivo"].map(_ext_fecha)
+                st.subheader("Ocupación SM por día")
+                _ch = (
+                    alt.Chart(_df_chart)
+                    .mark_line(point=True, color="#4C78A8")
+                    .encode(
+                        x=alt.X("Día:N", title="Día / Archivo", sort=None),
+                        y=alt.Y("SM Ocupadas:Q", title="Camas ocupadas SM"),
+                        tooltip=["Día", "SM Ocupadas"],
+                    )
+                    .properties(height=260)
+                )
+                st.altair_chart(_ch, use_container_width=True)
+
+    with tab_pendientes:
+        st.subheader("HCs pendientes de procesamiento")
+        _df_censo = st.session_state["censo_df"]
+        if _df_censo is None or _df_censo.empty:
+            st.info("Primero cargá los archivos en la pestaña **📥 Cargar Censos**.")
+        elif "codigoHC" not in _df_censo.columns:
+            st.warning("Los archivos cargados no contienen la columna 'codigoHC'.")
+        else:
+            try:
+                _r_proc = requests.get(f"{API}/hcd/reportes", timeout=10)
+                _procesadas = set()
+                if _r_proc.status_code == 200:
+                    for _rep in _r_proc.json():
+                        _procesadas.add(_rep.get("archivo", "").lower())
+                        _procesadas.add(_rep.get("codigo_paciente", "").lower())
+            except Exception:
+                _procesadas = set()
+
+            _filas = []
+            for _, _pac_row in _df_censo.iterrows():
+                _cod = str(_pac_row.get("codigoHC", "")).strip()
+                _nombre = str(_pac_row.get("Paciente", "—")).strip()
+                _ya_proc = any(_cod.lower() in _p for _p in _procesadas)
+                _filas.append({
+                    "codigoHC": _cod,
+                    "Paciente": _nombre,
+                    "Estado": "✅ Procesado" if _ya_proc else "⏳ Pendiente",
+                })
+
+            _df_pend = pd.DataFrame(_filas)
+            _n_proc = int((_df_pend["Estado"] == "✅ Procesado").sum())
+            _n_pend = int((_df_pend["Estado"] == "⏳ Pendiente").sum())
+            cp1, cp2 = st.columns(2)
+            cp1.metric("Procesados", _n_proc)
+            cp2.metric("Pendientes", _n_pend)
+
+            _filtro_p = st.radio(
+                "Mostrar",
+                ["Todos", "Solo pendientes", "Solo procesados"],
+                horizontal=True,
+                key="censo_filtro_p",
+            )
+            if _filtro_p == "Solo pendientes":
+                _df_vis = _df_pend[_df_pend["Estado"] == "⏳ Pendiente"]
+            elif _filtro_p == "Solo procesados":
+                _df_vis = _df_pend[_df_pend["Estado"] == "✅ Procesado"]
+            else:
+                _df_vis = _df_pend
+            st.dataframe(_df_vis, use_container_width=True, hide_index=True)
+
+            _solo_pend = _df_pend[_df_pend["Estado"] == "⏳ Pendiente"]
+            if not _solo_pend.empty:
+                st.download_button(
+                    "Descargar pendientes (CSV)",
+                    _solo_pend.to_csv(index=False),
+                    "hcs_pendientes.csv",
+                    "text/csv",
+                    key="censo_dl_pend",
+                )
+
+elif modulo == "Ingresar HC":
     st.title("Ingresar Historia Clinica")
     tipo = st.radio("Formato", ["HTML/TXT","PDF","Imagen OCR"])
     archivo = st.file_uploader("Archivo", type=["html","txt","pdf","png","jpg","xls","xlsx"])
