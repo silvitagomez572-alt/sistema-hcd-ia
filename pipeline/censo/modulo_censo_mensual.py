@@ -17,6 +17,12 @@ except ImportError:
     _PYPDF_OK = False
 
 try:
+    import pdfplumber
+    _PDFPLUMBER_OK = True
+except ImportError:
+    _PDFPLUMBER_OK = False
+
+try:
     from bs4 import BeautifulSoup
     _BS4_OK = True
 except ImportError:
@@ -74,11 +80,12 @@ def _leer_html(ruta: pathlib.Path) -> pd.DataFrame:
 
 def _texto_pdf_a_df(texto: str) -> pd.DataFrame:
     """
-    Intenta reconstruir un DataFrame a partir del texto extraído de un PDF de VADIGU.
-    Asume que cada línea contiene campos separados por espacios/tabulaciones.
+    Reconstruye un DataFrame a partir del texto extraído de un PDF de VADIGU.
+    Detecta la línea de cabecera y parsea cada fila separando por dos o más espacios.
+    Devuelve un DataFrame vacío (no lanza) si no hay filas válidas — permite que
+    el caller decida si reintentar con pdfplumber.
     """
     lineas = [l.strip() for l in texto.splitlines() if l.strip()]
-    # Detectar línea cabecera buscando "Cama" o "Estado"
     cabecera_idx = None
     for i, linea in enumerate(lineas):
         if re.search(r'\bCama\b', linea, re.IGNORECASE) and re.search(r'\bEstado\b', linea, re.IGNORECASE):
@@ -86,7 +93,7 @@ def _texto_pdf_a_df(texto: str) -> pd.DataFrame:
             break
 
     if cabecera_idx is None:
-        raise ValueError("No se encontró cabecera de tabla en el PDF")
+        return pd.DataFrame()
 
     filas = []
     for linea in lineas[cabecera_idx + 1:]:
@@ -94,16 +101,80 @@ def _texto_pdf_a_df(texto: str) -> pd.DataFrame:
         if len(partes) >= len(COLUMNAS_ESPERADAS):
             filas.append(partes[:len(COLUMNAS_ESPERADAS)])
 
-    df = pd.DataFrame(filas, columns=COLUMNAS_ESPERADAS)
+    if not filas:
+        return pd.DataFrame()
+    return pd.DataFrame(filas, columns=COLUMNAS_ESPERADAS)
+
+
+def _leer_pdf_pdfplumber(ruta: pathlib.Path) -> pd.DataFrame:
+    """
+    Extrae la tabla del censo usando pdfplumber, que mantiene la estructura
+    de columnas incluso en PDFs con texto compacto o sin separadores claros.
+    """
+    todas_filas: list[list] = []
+    cabeceras: list[str] | None = None
+
+    with pdfplumber.open(str(ruta)) as pdf:
+        for pagina in pdf.pages:
+            tablas = pagina.extract_tables()
+            for tabla in tablas:
+                if not tabla:
+                    continue
+                # La primera fila con "Cama" y "Estado" es la cabecera
+                for idx_fila, fila in enumerate(tabla):
+                    fila_norm = [str(c or "").strip() for c in fila]
+                    if cabeceras is None:
+                        if any(re.search(r'\bCama\b', c, re.IGNORECASE) for c in fila_norm) and \
+                           any(re.search(r'\bEstado\b', c, re.IGNORECASE) for c in fila_norm):
+                            cabeceras = fila_norm
+                        continue
+                    # Fila de datos: descartar filas completamente vacías
+                    if any(c for c in fila_norm):
+                        todas_filas.append(fila_norm)
+
+    if cabeceras is None or not todas_filas:
+        return pd.DataFrame()
+
+    # Alinear columnas: recortar o rellenar para que coincidan con cabeceras
+    n = len(cabeceras)
+    filas_alineadas = [f[:n] + [""] * max(0, n - len(f)) for f in todas_filas]
+    df = pd.DataFrame(filas_alineadas, columns=cabeceras)
+
+    # Mapear cabeceras detectadas a COLUMNAS_ESPERADAS cuando difieren en acento/case
+    _alias = {c.lower(): c for c in COLUMNAS_ESPERADAS}
+    df = df.rename(columns={c: _alias[c.lower()] for c in df.columns if c.lower() in _alias})
     return df
 
 
 def _leer_pdf(ruta: pathlib.Path) -> pd.DataFrame:
-    if not _PYPDF_OK:
-        raise ImportError("pypdf requerido para leer PDF")
-    reader = pypdf.PdfReader(str(ruta))
-    texto = "".join(page.extract_text() or "" for page in reader.pages)
-    return _texto_pdf_a_df(texto)
+    """
+    Estrategia de dos pasos:
+    1. pypdf — rápido; funciona bien cuando el PDF tiene texto extraíble con columnas separadas.
+    2. pdfplumber — fallback; analiza la geometría de la tabla y recupera columnas aunque
+       el texto esté compacto o mal espaciado.
+    """
+    if not _PYPDF_OK and not _PDFPLUMBER_OK:
+        raise ImportError("Se necesita pypdf o pdfplumber para leer PDFs")
+
+    # Paso 1: pypdf
+    if _PYPDF_OK:
+        try:
+            reader = pypdf.PdfReader(str(ruta))
+            texto = "".join(page.extract_text() or "" for page in reader.pages)
+            df = _texto_pdf_a_df(texto)
+            if not df.empty:
+                return df
+        except Exception:
+            pass  # degradar a pdfplumber
+
+    # Paso 2: pdfplumber
+    if _PDFPLUMBER_OK:
+        df = _leer_pdf_pdfplumber(ruta)
+        if not df.empty:
+            return df
+        raise ValueError(f"pdfplumber no encontró tabla de censo en {ruta.name}")
+
+    raise ValueError(f"pypdf no pudo extraer tabla de {ruta.name} y pdfplumber no está instalado")
 
 
 def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
