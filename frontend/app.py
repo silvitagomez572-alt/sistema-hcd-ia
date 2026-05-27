@@ -104,6 +104,14 @@ if modulo == "📋 Censo Mensual":
             st.subheader("Detalle por archivo")
             st.dataframe(_df_st, use_container_width=True, hide_index=True)
 
+            if _df_cons2 is not None and not _df_cons2.empty:
+                st.divider()
+                st.warning("⚠️ Información de uso interno — no compartir")
+                _cols_mostrar = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area"] if c in _df_cons2.columns]
+                if _cols_mostrar:
+                    st.subheader("Pacientes internados — Salud Mental")
+                    st.dataframe(_df_cons2[_cols_mostrar], use_container_width=True, hide_index=True)
+
     with tab_stats:
         st.subheader("Estadísticas del mes")
         _df_censo = st.session_state["censo_df"]
