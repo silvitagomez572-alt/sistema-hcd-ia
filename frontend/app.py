@@ -26,7 +26,7 @@ if modulo == "📋 Censo Mensual":
     import pathlib as _pl
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
     try:
-        from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental, TOTAL_CAMAS_FIJAS
+        from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental, stats_servicio_sm, TOTAL_CAMAS_FIJAS
         _censo_ok = True
     except ImportError as _e:
         _censo_ok = False
@@ -64,13 +64,12 @@ if modulo == "📋 Censo Mensual":
                     _ruta_tmp.write_bytes(_arch.getvalue())
                     try:
                         _df_raw = leer_archivo_censo(_ruta_tmp)
-                        _total_c = len(_df_raw)
-                        _ocu = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "ocupada").sum()) if "Estado" in _df_raw.columns else 0
-                        _lib = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "libre").sum()) if "Estado" in _df_raw.columns else 0
+                        _svc = stats_servicio_sm(_df_raw)
+                        _ocu = _svc["ocupadas_fijas"]
+                        _lib = _svc["libres_fijas"]
+                        _trans_ocu = _svc["transitorias_ocupadas"]
                         _df_sm = filtrar_salud_mental(_df_raw)
-                        _sm_ocu = len(_df_sm)
-                        _sm_fijas_ocu = int((_df_sm["tipo_cama"] == "Fija SM").sum()) if "tipo_cama" in _df_sm.columns else 0
-                        stats_lista.append({"Archivo": _arch.name, "Total camas": _total_c, "Ocupadas": _ocu, "Libres": _lib, "SM Ocupadas": _sm_ocu, "SM Fijas Ocu": _sm_fijas_ocu})
+                        stats_lista.append({"Archivo": _arch.name, "Total SM (18 fijas)": TOTAL_CAMAS_FIJAS, "Ocupadas": _ocu, "Libres": _lib, "Transitoria - Trasplantados": _trans_ocu})
                         if not _df_sm.empty:
                             _df_sm = _df_sm.copy()
                             _df_sm["_archivo"] = _arch.name
@@ -100,8 +99,8 @@ if modulo == "📋 Censo Mensual":
             _n_sm = len(_df_cons2) if _df_cons2 is not None else 0
             c1, c2, c3 = st.columns(3)
             c1.metric("Internados SM (únicos/mes)", _n_sm)
-            c2.metric("Pico camas ocupadas (hospital)", int(_df_st["Ocupadas"].max()))
-            c3.metric("Pico camas libres (hospital)", int(_df_st["Libres"].max()))
+            c2.metric("Pico camas fijas SM ocupadas", int(_df_st["Ocupadas"].max()))
+            c3.metric("Pico camas fijas SM libres", int(_df_st["Libres"].max()))
             st.subheader("Detalle por archivo")
             st.dataframe(_df_st, use_container_width=True, hide_index=True)
 
@@ -153,8 +152,8 @@ if modulo == "📋 Censo Mensual":
             _n_pac = len(_df_censo)
 
             _porc_ocu = None
-            if _df_st2 is not None and "SM Fijas Ocu" in _df_st2.columns:
-                _porc_ocu = round(100 * _df_st2["SM Fijas Ocu"].mean() / TOTAL_CAMAS_FIJAS, 1)
+            if _df_st2 is not None and "Ocupadas" in _df_st2.columns:
+                _porc_ocu = round(100 * _df_st2["Ocupadas"].mean() / TOTAL_CAMAS_FIJAS, 1)
 
             _prom_estada = None
             if "Estada" in _df_censo.columns:
@@ -163,8 +162,8 @@ if modulo == "📋 Censo Mensual":
                     _prom_estada = round(float(_estada_num.mean()), 1)
 
             _giro = None
-            if _df_st2 is not None and "SM Fijas Ocu" in _df_st2.columns and _df_st2["SM Fijas Ocu"].max() > 0:
-                _giro = round(_n_pac / _df_st2["SM Fijas Ocu"].max(), 2)
+            if _df_st2 is not None and "Ocupadas" in _df_st2.columns and _df_st2["Ocupadas"].max() > 0:
+                _giro = round(_n_pac / _df_st2["Ocupadas"].max(), 2)
 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total pacientes SM", _n_pac)

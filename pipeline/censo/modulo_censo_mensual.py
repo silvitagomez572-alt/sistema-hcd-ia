@@ -362,6 +362,28 @@ def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
     return df
 
 
+def stats_servicio_sm(df: pd.DataFrame) -> dict:
+    """
+    Calcula Total/Ocupadas/Libres del servicio SM sobre CAMAS_FIJAS_SM únicamente.
+    Las camas transitorias (CAMAS_TRANSITORIAS) se reportan aparte y no afectan los totales.
+    Total siempre = TOTAL_CAMAS_FIJAS (18).
+    """
+    ocupadas_fijas = 0
+    transitorias_ocu = 0
+    if "Cama" in df.columns and "Estado" in df.columns:
+        mask_ocu = df["Estado"].map(_normalizar) == ESTADO_OCUPADA
+        mask_fijas = df["Cama"].apply(lambda c: str(c).strip() in CAMAS_FIJAS_SM)
+        mask_trans = df["Cama"].apply(lambda c: str(c).strip() in CAMAS_TRANSITORIAS)
+        ocupadas_fijas = int((mask_fijas & mask_ocu).sum())
+        transitorias_ocu = int((mask_trans & mask_ocu).sum())
+    return {
+        "total_camas": TOTAL_CAMAS_FIJAS,
+        "ocupadas_fijas": ocupadas_fijas,
+        "libres_fijas": TOTAL_CAMAS_FIJAS - ocupadas_fijas,
+        "transitorias_ocupadas": transitorias_ocu,
+    }
+
+
 def filtrar_salud_mental(df: pd.DataFrame) -> pd.DataFrame:
     """Filtra Estado=Ocupada y Area=Salud Mental, clasifica tipo de cama y deduplica por cama+día."""
     if "Estado" not in df.columns or "Area" not in df.columns:
