@@ -107,10 +107,11 @@ if modulo == "📋 Censo Mensual":
             if _df_cons2 is not None and not _df_cons2.empty:
                 st.divider()
                 st.warning("⚠️ Información de uso interno — no compartir")
-                _cols_mostrar = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area"] if c in _df_cons2.columns]
-                if _cols_mostrar:
+                _cols_dedup = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area"] if c in _df_cons2.columns]
+                if _cols_dedup:
                     st.subheader("Pacientes internados — Salud Mental")
-                    _df_tabla = _df_cons2[_cols_mostrar].copy()
+                    st.caption("Consultá VADIGU para identificar el paciente por codigoHC.")
+                    _df_tabla = _df_cons2[_cols_dedup].copy()
                     # Deduplicar por Documento (DNI) conservando el registro con mayor Estada.
                     # El mismo paciente puede tener dos codigoHC distintos en VADIGU.
                     if "Estada" in _df_tabla.columns:
@@ -124,17 +125,17 @@ if modulo == "📋 Censo Mensual":
                             .reset_index(drop=True)
                         )
                         _df_tabla["Estada"] = _df_tabla["Estada"].astype(int).astype(str)
+                    # Mostrar solo columnas no sensibles
+                    _cols_visibles = [c for c in ["codigoHC", "Ingreso", "Estada", "Area"] if c in _df_tabla.columns]
                     st.dataframe(
-                        _df_tabla,
+                        _df_tabla[_cols_visibles],
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "Paciente":   st.column_config.TextColumn("Paciente",   width="large"),
-                            "Documento":  st.column_config.TextColumn("Documento",  width="medium"),
-                            "codigoHC":   st.column_config.TextColumn("codigoHC",   width="medium"),
-                            "Ingreso":    st.column_config.TextColumn("Ingreso",    width="small"),
-                            "Estada":     st.column_config.TextColumn("Estada",     width="small"),
-                            "Area":       st.column_config.TextColumn("Area",       width="medium"),
+                            "codigoHC": st.column_config.TextColumn("codigoHC", width="medium"),
+                            "Ingreso":  st.column_config.TextColumn("Ingreso",  width="small"),
+                            "Estada":   st.column_config.TextColumn("Estada",   width="small"),
+                            "Area":     st.column_config.TextColumn("Area",     width="medium"),
                         },
                     )
 
