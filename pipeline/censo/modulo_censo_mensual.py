@@ -44,7 +44,7 @@ TOTAL_CAMAS_FIJAS = 18
 
 
 def _normalizar(valor: str) -> str:
-    return str(valor).strip().lower()
+    return re.sub(r'\s+', ' ', str(valor)).strip().lower()
 
 
 def clasificar_tipo_cama(cama: str) -> str:
@@ -371,15 +371,15 @@ def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
     else:
         raise ValueError(f"Formato no soportado: {sufijo}")
 
-    # Normalizar nombres de columnas: strip + título
-    df.columns = [str(c).strip() for c in df.columns]
+    # Normalizar nombres de columnas: strip + colapsar whitespace interno
+    df.columns = [re.sub(r'\s+', ' ', str(c)).strip() for c in df.columns]
 
     # Intentar mapear columnas si difieren (tolerancia a variantes de VADIGU)
     _alias = {
         "cama": "Cama", "estado": "Estado", "area": "Area", "área": "Area",
         "paciente": "Paciente", "edad": "Edad", "documento": "Documento",
         "codigohc": "codigoHC", "codigo hc": "codigoHC", "hc": "codigoHC",
-        "ingreso": "Ingreso", "estada": "Estada",
+        "ingreso": "Ingreso", "estada": "Estada", "dias estada": "Estada",
     }
     df = df.rename(columns={c: _alias[c.lower()] for c in df.columns if c.lower() in _alias})
     df["_archivo"] = ruta.name
