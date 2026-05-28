@@ -111,13 +111,15 @@ if modulo == "📋 Censo Mensual":
                 if _cols_mostrar:
                     st.subheader("Pacientes internados — Salud Mental")
                     _df_tabla = _df_cons2[_cols_mostrar].copy()
-                    # Deduplicar por codigoHC conservando el registro con mayor Estada
-                    if "codigoHC" in _df_tabla.columns and "Estada" in _df_tabla.columns:
+                    # Deduplicar por Documento (DNI) conservando el registro con mayor Estada.
+                    # El mismo paciente puede tener dos codigoHC distintos en VADIGU.
+                    if "Estada" in _df_tabla.columns:
                         _df_tabla["Estada"] = pd.to_numeric(_df_tabla["Estada"], errors="coerce").fillna(0)
+                        _dedup_col = "Documento" if "Documento" in _df_tabla.columns else "codigoHC"
                         _df_tabla = (
                             _df_tabla
                             .sort_values("Estada", ascending=False)
-                            .drop_duplicates(subset=["codigoHC"], keep="first")
+                            .drop_duplicates(subset=[_dedup_col], keep="first")
                             .sort_values("Estada", ascending=False)
                             .reset_index(drop=True)
                         )
