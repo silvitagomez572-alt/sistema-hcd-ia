@@ -84,7 +84,7 @@ if modulo == "📋 Censo Mensual":
                 _df_cons = pd.concat(fragmentos, ignore_index=True)
                 if "codigoHC" in _df_cons.columns:
                     if "Ingreso" in _df_cons.columns:
-                        _df_cons["Ingreso"] = pd.to_datetime(_df_cons["Ingreso"], dayfirst=True, errors="coerce")
+                        _df_cons["Ingreso"] = pd.to_datetime(_df_cons["Ingreso"], unit='ms', errors="coerce")
                         _df_cons = _df_cons.sort_values("Ingreso", na_position="first")
                     _df_cons = _df_cons.drop_duplicates(subset=["codigoHC"], keep="last").reset_index(drop=True)
                 st.session_state["censo_df"] = _df_cons
@@ -125,17 +125,20 @@ if modulo == "📋 Censo Mensual":
                             .reset_index(drop=True)
                         )
                         _df_tabla["Estada"] = _df_tabla["Estada"].astype(int).astype(str)
-                    # Mostrar solo columnas no sensibles
-                    _cols_visibles = [c for c in ["codigoHC", "Ingreso", "Estada", "Area"] if c in _df_tabla.columns]
+                    if "Ingreso" in _df_tabla.columns:
+                        _df_tabla["Ingreso"] = pd.to_datetime(_df_tabla["Ingreso"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
+                    # Solo pantalla — Documento visible pero no se persiste en ningún lado
+                    _cols_visibles = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "Area"] if c in _df_tabla.columns]
                     st.dataframe(
                         _df_tabla[_cols_visibles],
                         use_container_width=True,
                         hide_index=True,
                         column_config={
-                            "codigoHC": st.column_config.TextColumn("codigoHC", width="medium"),
-                            "Ingreso":  st.column_config.TextColumn("Ingreso",  width="small"),
-                            "Estada":   st.column_config.TextColumn("Estada",   width="small"),
-                            "Area":     st.column_config.TextColumn("Area",     width="medium"),
+                            "codigoHC":  st.column_config.TextColumn("codigoHC",  width="medium"),
+                            "Documento": st.column_config.TextColumn("Documento", width="medium"),
+                            "Ingreso":   st.column_config.TextColumn("Ingreso",   width="small"),
+                            "Estada":    st.column_config.TextColumn("Estada",    width="small"),
+                            "Area":      st.column_config.TextColumn("Area",      width="medium"),
                         },
                     )
 

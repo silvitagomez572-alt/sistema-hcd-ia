@@ -35,6 +35,17 @@ Incluye:
 
 ---
 
+## Módulo Censo Mensual
+
+Lee censos diarios exportados del HMIS VADIGU en formato CSV, Excel (XLS/XLSX), HTML y PDF, consolida los pacientes únicos del mes y genera estadísticas automáticas de ocupación en Salud Mental.
+
+- **Formatos soportados:** CSV, Excel (XLS/XLSX), HTML, PDF
+- **Consolidación:** deduplica pacientes por `codigoHC` y por DNI (campo `Documento`), conservando el registro con mayor estadía
+- **Estadísticas automáticas:** total de pacientes SM únicos, pico de camas ocupadas, porcentaje de ocupación, promedio de estada y giro de camas
+- **Pendientes de procesamiento:** cruza el censo mensual con las HCs ya procesadas en la BD para identificar qué pacientes aún no fueron analizados
+
+---
+
 ## Módulos en desarrollo
 
 - Relevamiento semántico interdisciplinario en Salud Mental mediante encuesta estructurada a profesionales.
@@ -169,6 +180,17 @@ Ver `docs/version_estable_pre_entrega.md` para el detalle completo del dataset, 
 - Los pacientes se identifican únicamente como `PAC-{id:03d}` en toda la documentación y salidas del sistema.
 
 Ver `docs/seguridad_datos.md` para la política completa de datos del repositorio.
+
+---
+
+## Protección de datos sensibles
+
+Los campos `Paciente` (nombre completo) y `Documento` (DNI) se leen de los archivos de censo VADIGU exclusivamente para la deduplicación de pacientes dentro de la sesión activa.
+
+- **No se persisten en base de datos.** Ningún nombre ni DNI se almacena en `hcs.db` ni en ningún otro sistema de persistencia.
+- **No se exportan.** Los reportes descargables (CSV, JSON) no incluyen nombre ni DNI; solo incluyen `codigoHC`, estadísticas de estadía y área clínica.
+- La vista "Pacientes internados — Salud Mental" muestra nombre y DNI únicamente en pantalla, con advertencia de uso interno, y no los propaga a ningún módulo externo.
+- Una vez finalizada la sesión, los datos sensibles no quedan registrados en ningún lado.
 
 ---
 
