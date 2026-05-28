@@ -6,198 +6,147 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 11pt;
-  color: #1a1a2e;
-  background: #fff;
-}
+body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; background: #fff; }
 
-/* ── PORTADA ── */
+/* ── PORTADA ─────────────────────────────────────────── */
 .cover {
   page-break-after: always;
   min-height: 100vh;
-  display: flex; flex-direction: column;
-  justify-content: center; align-items: center; text-align: center;
-  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 55%, #0f3460 100%);
-  color: #fff;
-  padding: 60px 40px;
+  display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+  background: linear-gradient(160deg, #0d1b2a 0%, #1b2d45 55%, #0f3460 100%);
+  color: #fff; padding: 60px 40px;
 }
-.cover .eyebrow {
-  font-size: 9pt; letter-spacing: 4px; text-transform: uppercase;
-  color: #7ec8e3; margin-bottom: 28px; font-weight: 400;
-}
-.cover h1 { font-size: 34pt; font-weight: 700; line-height: 1.15; margin-bottom: 10px; }
-.cover h2 { font-size: 17pt; font-weight: 300; color: #7ec8e3; margin-bottom: 44px; }
-.cover .rule { width: 70px; height: 3px; background: #e94560; border-radius: 2px; margin: 0 auto 44px; }
-.cover .meta {
-  display: grid; grid-template-columns: 160px 1fr;
-  gap: 10px 0; text-align: left; font-size: 9.5pt;
-  color: #a8c5da; max-width: 420px;
-}
+.cover .eyebrow  { font-size: 9pt; letter-spacing: 4px; text-transform: uppercase; color: #7ec8e3; margin-bottom: 32px; font-weight: 400; }
+.cover h1        { font-size: 38pt; font-weight: 700; line-height: 1.1; margin-bottom: 10px; letter-spacing: -0.5px; }
+.cover h2        { font-size: 16pt; font-weight: 300; color: #7ec8e3; margin-bottom: 48px; }
+.cover .rule     { width: 64px; height: 3px; background: #e94560; border-radius: 2px; margin: 0 auto 48px; }
+.cover .meta     { display: grid; grid-template-columns: 168px 1fr; gap: 10px 0; text-align: left; font-size: 9.5pt; color: #a8c5da; max-width: 440px; }
 .cover .meta strong { color: #fff; }
-.cover .tagline {
-  margin-top: 56px; font-size: 7.5pt; color: #3d5a80;
-  letter-spacing: 2.5px; text-transform: uppercase;
-}
+.cover .tagline  { margin-top: 60px; font-size: 7.5pt; color: #3d5a80; letter-spacing: 2.5px; text-transform: uppercase; }
 
-/* ── PAGE CHROME ── */
+/* ── ENCABEZADO / PIE DE PÁGINA ─────────────────────── */
 .page-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 48px; border-bottom: 2px solid #0f3460;
+  padding: 14px 52px; border-bottom: 2px solid #0f3460; margin-bottom: 2px;
 }
-.page-header .left { font-size: 8.5pt; font-weight: 700; color: #0f3460;
-  text-transform: uppercase; letter-spacing: 1px; }
-.page-header .right { font-size: 8pt; color: #999; }
+.page-header .left  { font-size: 8.5pt; font-weight: 700; color: #0f3460; text-transform: uppercase; letter-spacing: 1px; }
+.page-header .right { font-size: 8pt; color: #aaa; }
 .page-footer {
-  border-top: 1px solid #dde6f8; padding: 12px 48px;
-  display: flex; justify-content: space-between;
-  font-size: 7.5pt; color: #bbb; margin-top: 36px;
+  border-top: 1px solid #dde6f8; padding: 11px 52px; margin-top: 36px;
+  display: flex; justify-content: space-between; font-size: 7.5pt; color: #bbb;
 }
 
-/* ── BODY ── */
-.page { padding: 28px 48px; max-width: 820px; margin: 0 auto; }
-.section { margin-bottom: 36px; }
+/* ── CUERPO ──────────────────────────────────────────── */
+.page         { padding: 26px 52px 10px; max-width: 840px; margin: 0 auto; }
+.section      { margin-bottom: 34px; }
 .section-title {
-  font-size: 11.5pt; font-weight: 700; color: #0f3460;
+  font-size: 11pt; font-weight: 700; color: #0f3460;
   border-bottom: 2px solid #e94560; padding-bottom: 5px;
   margin-bottom: 18px; text-transform: uppercase; letter-spacing: 0.8px;
 }
-.note {
-  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 7px;
-  padding: 11px 16px; font-size: 9pt; color: #1e40af; margin-bottom: 16px;
-}
 
-/* ── STAT CARDS ── */
-.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
-.card {
-  background: linear-gradient(135deg,#f8faff,#e8f0fe);
-  border: 1px solid #c8d8f8; border-radius: 10px;
-  padding: 16px 12px; text-align: center;
+/* ── TARJETAS ────────────────────────────────────────── */
+.cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+.card  {
+  background: linear-gradient(145deg,#f8faff,#e8f0fe);
+  border: 1px solid #c8d8f8; border-radius: 10px; padding: 18px 12px; text-align: center;
 }
-.card .val { font-size: 23pt; font-weight: 700; color: #0f3460; line-height: 1; margin-bottom: 5px; }
-.card .lbl { font-size: 7.5pt; color: #4a6fa5; text-transform: uppercase;
-  letter-spacing: 0.4px; font-weight: 600; }
+.card .val { font-size: 26pt; font-weight: 700; color: #0f3460; line-height: 1; margin-bottom: 6px; }
+.card .lbl { font-size: 7.5pt; color: #4a6fa5; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
 .card .sub { font-size: 7pt; color: #999; margin-top: 3px; }
-.card.accent .val { color: #e94560; }
+.card.hi .val { color: #e94560; }
 
-/* ── CHART ── */
-.chart-wrap {
-  background: #fafbff; border: 1px solid #dde6f8; border-radius: 10px;
-  padding: 18px 18px 14px; position: relative; height: 280px;
-}
-.chart-caption {
-  font-size: 7.5pt; color: #999; text-align: center;
-  margin-top: 7px; font-style: italic;
-}
+/* ── GRÁFICO ─────────────────────────────────────────── */
+.chart-box     { background: #fafbff; border: 1px solid #dde6f8; border-radius: 10px; padding: 18px 18px 12px; height: 290px; position: relative; }
+.chart-caption { font-size: 7.5pt; color: #999; text-align: center; margin-top: 8px; font-style: italic; }
 
-/* ── TABLE ── */
-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
-thead tr { background: #0f3460; color: #fff; }
-thead th {
-  padding: 8px 9px; text-align: center;
-  font-size: 8pt; font-weight: 600;
-  letter-spacing: 0.4px; text-transform: uppercase;
-}
+/* ── TABLA ───────────────────────────────────────────── */
+table           { width: 100%; border-collapse: collapse; font-size: 9pt; }
+thead tr        { background: #0f3460; color: #fff; }
+thead th        { padding: 8px 9px; text-align: center; font-size: 8pt; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; }
 thead th:first-child, thead th:nth-child(2) { text-align: left; }
 tbody tr:nth-child(even) { background: #f4f7ff; }
-tbody td {
-  padding: 7px 9px; text-align: center;
-  border-bottom: 1px solid #e8edf8; vertical-align: middle;
-}
+tbody td        { padding: 7px 9px; text-align: center; border-bottom: 1px solid #e8edf8; vertical-align: middle; }
 tbody td:first-child { text-align: left; font-weight: 600; }
 tbody td:nth-child(2) { text-align: left; font-size: 8pt; color: #555; }
-tfoot td {
-  background: #0f3460; color: #fff; font-weight: 700;
-  padding: 7px 9px; text-align: center; font-size: 8.5pt;
-}
+tfoot td        { background: #0f3460; color: #fff; font-weight: 700; padding: 7px 9px; text-align: center; font-size: 8.5pt; }
 tfoot td:first-child { text-align: left; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 7.5pt; font-weight: 700; }
+.b-full { background: #ffeaea; color: #c0392b; }
+.b-high { background: #fff3e0; color: #d35400; }
 
-.badge {
-  display: inline-block; padding: 2px 7px; border-radius: 10px;
-  font-size: 7.5pt; font-weight: 700;
+/* ── FÓRMULAS ────────────────────────────────────────── */
+.formula-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.formula-card {
+  border: 1px solid #dde6f8; border-radius: 10px; padding: 16px 18px;
+  background: #fafbff; page-break-inside: avoid;
 }
-.b-full { background:#ffeaea; color:#c0392b; }
-.b-high { background:#fff3e0; color:#d35400; }
-.b-ok   { background:#e8f5e9; color:#27ae60; }
-
-/* ── FIXES ── */
-.fix { display:flex; gap:12px; padding:12px 14px; margin-bottom:10px;
-  border-radius:8px; border-left:4px solid; font-size:9.5pt; }
-.fix.data  { background:#fff8e1; border-color:#f59e0b; }
-.fix.code  { background:#e8f5e9; border-color:#27ae60; }
-.fix.git   { background:#e8f0fe; border-color:#3b82f6; }
-.fix-ico   { font-size:13pt; flex-shrink:0; margin-top:2px; }
-.fix-title { font-weight:700; margin-bottom:3px; }
-.fix-body  { color:#555; font-size:9pt; line-height:1.5; }
-.tag {
-  display:inline-block; background:#1a1a2e; color:#7ec8e3;
-  font-family:'Consolas','Courier New',monospace; font-size:7.5pt;
-  padding:1px 6px; border-radius:4px; margin-top:4px;
+.formula-card .f-title { font-size: 9.5pt; font-weight: 700; color: #0f3460; margin-bottom: 8px; }
+.formula-card .f-math  {
+  background: #0f3460; color: #7ec8e3;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 9pt; padding: 8px 12px; border-radius: 6px;
+  margin-bottom: 8px; text-align: center; letter-spacing: 0.5px;
 }
+.formula-card .f-body  { font-size: 8.5pt; color: #444; line-height: 1.55; }
+.formula-card .f-note  { font-size: 7.5pt; color: #888; margin-top: 7px; font-style: italic; }
 
-/* ── CLOSING ── */
+/* ── CIERRE ──────────────────────────────────────────── */
 .closing {
-  background: linear-gradient(155deg,#0f3460,#16213e);
-  border-radius: 14px; padding: 52px 48px;
-  color: #fff; text-align: center; margin-top: 36px;
+  background: linear-gradient(155deg, #0d1b2a, #0f3460);
+  border-radius: 14px; padding: 54px 48px;
+  color: #fff; text-align: center; margin-top: 32px;
 }
-.closing .salut  { font-size:15pt; font-weight:700; color:#7ec8e3; margin-bottom:22px; }
-.closing .msg    { font-size:12.5pt; font-weight:300; color:#d0e4f7;
-  line-height:1.75; max-width:540px; margin:0 auto 32px; }
-.closing .rule2  { width:44px; height:2px; background:#e94560; margin:0 auto 24px; }
-.closing .sig    { font-size:9.5pt; color:#a8c5da; letter-spacing:1px; font-weight:600; text-transform:uppercase; }
-.closing .sys    { font-size:11pt; color:#fff; font-weight:700; margin-top:8px; }
-.closing .tagln  { font-size:7.5pt; color:#3d5a80; letter-spacing:2px; text-transform:uppercase; margin-top:10px; }
+.closing .salut  { font-size: 14pt; font-weight: 700; color: #7ec8e3; margin-bottom: 22px; }
+.closing .msg    { font-size: 12pt; font-weight: 300; color: #d0e4f7; line-height: 1.8; max-width: 560px; margin: 0 auto 30px; }
+.closing .rule2  { width: 44px; height: 2px; background: #e94560; margin: 0 auto 24px; }
+.closing .sign   { font-size: 9.5pt; color: #a8c5da; letter-spacing: 1px; text-transform: uppercase; font-weight: 600; }
+.closing .sysnam { font-size: 12pt; font-weight: 700; color: #fff; margin-top: 8px; }
+.closing .syssub { font-size: 7.5pt; color: #3d5a80; letter-spacing: 2px; text-transform: uppercase; margin-top: 10px; }
 
 @media print {
-  body { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+  body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 </style>
 </head>
 <body>
 
-<!-- ══ PORTADA ══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════ PORTADA ══════════════════════════════════════ -->
 <div class="cover">
   <div class="eyebrow">Hospital Interzonal San Juan Bautista · Catamarca</div>
   <h1>Informe Censo<br>Mensual</h1>
   <h2>Servicio de Salud Mental</h2>
   <div class="rule"></div>
   <div class="meta">
-    <strong>Período</strong><span>Mayo 2026</span>
-    <strong>Servicio</strong><span>Salud Mental — HISJB</span>
-    <strong>Sistema</strong><span>HCD IA · Módulo Censo Mensual</span>
-    <strong>Generado</strong><span>28 de mayo de 2026</span>
-    <strong>Archivos procesados</strong><span>6 censos diarios (CSV · VADIGU)</span>
-    <strong>Camas fijas SM</strong><span>18 — denominador oficial</span>
+    <strong>Período</strong>       <span>Mayo 2026</span>
+    <strong>Servicio</strong>      <span>Salud Mental — HISJB</span>
+    <strong>Sistema</strong>       <span>HCD IA · Módulo Censo Mensual</span>
+    <strong>Generado</strong>      <span>28 de mayo de 2026</span>
+    <strong>Archivos fuente</strong><span>CSV exportados de VADIGU (6 días únicos)</span>
+    <strong>Camas fijas SM</strong> <span>18 — denominador oficial</span>
+    <strong>Fuente de datos</strong><span>~/Descargas — deduplicación PDF/CSV por día</span>
   </div>
   <div class="tagline">Sistema HCD IA — Inteligencia Artificial al servicio de la Salud Mental</div>
 </div>
 
-<!-- ══ PÁGINA 1 ══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════ PÁG 1 · MÉTRICAS + GRÁFICO ══════════════════ -->
 <div class="page-header">
   <div class="left">Censo Mensual · Salud Mental HISJB</div>
   <div class="right">Mayo 2026</div>
 </div>
 <div class="page">
 
-  <!-- 1 · ESTADÍSTICAS -->
   <div class="section">
-    <div class="section-title">1. Estadísticas del Mes</div>
-    <div class="note">
-      Indicadores consolidados del mes completo procesados en el módulo Censo Mensual.
-      Base: <strong>18 camas fijas SM</strong> (<code>CAMAS_FIJAS_SM</code>).
-      Las camas transitorias 53&nbsp;A / 53&nbsp;B se informan por separado.
-    </div>
-    <div class="stats-grid">
+    <div class="section-title">1. Indicadores del Mes</div>
+    <div class="cards">
       <div class="card">
         <div class="val">25</div>
         <div class="lbl">Pacientes únicos</div>
-        <div class="sub">Dedup. HC + DNI</div>
+        <div class="sub">Dedup. codigoHC + DNI</div>
       </div>
-      <div class="card accent">
-        <div class="val">83,8&nbsp;%</div>
-        <div class="lbl">% Ocupación SM</div>
+      <div class="card hi">
+        <div class="val">83,8%</div>
+        <div class="lbl">Ocupación SM</div>
         <div class="sub">Media diaria / 18 camas</div>
       </div>
       <div class="card">
@@ -208,46 +157,44 @@ tfoot td:first-child { text-align: left; }
       <div class="card">
         <div class="val">1,32</div>
         <div class="lbl">Giro de camas</div>
-        <div class="sub">Pac. únicos / pico diario</div>
+        <div class="sub">Pacientes / pico diario</div>
       </div>
     </div>
   </div>
 
-  <!-- 2 · GRÁFICO -->
   <div class="section">
-    <div class="section-title">2. Evolución de Ocupación — Mayo 2026</div>
-    <div class="chart-wrap">
+    <div class="section-title">2. Ocupación Diaria — Mayo 2026</div>
+    <div class="chart-box">
       <canvas id="chart"></canvas>
     </div>
     <div class="chart-caption">
-      Eje X: todos los días de mayo (1–31). Puntos sólidos: días con archivo CSV disponible en ~/Descargas.
-      La línea se interrumpe en días sin archivo. Línea punteada azul = media mensual 83,8 % (15,1 camas). Línea punteada roja = capacidad máxima (18 camas).
+      Eje X: días 01–31 de mayo. Puntos: días con archivo CSV disponible (04, 05, 06, 07, 08, 27).
+      La línea se interrumpe donde no hay archivo. ── Azul punteado: media mensual 83,8 % (≈ 15,1 camas).  ── Rojo punteado: capacidad máxima (18 camas).
     </div>
   </div>
 
 </div>
 
-<!-- ══ PÁGINA 2 ══════════════════════════════════════════════════════════ -->
-<div class="page-header" style="margin-top:20px;">
+<!-- ══════════════════════ PÁG 2 · TABLA ═══════════════════════════════ -->
+<div class="page-header" style="margin-top:18px;">
   <div class="left">Censo Mensual · Salud Mental HISJB</div>
-  <div class="right">Mayo 2026 — Detalle por Archivo</div>
+  <div class="right">Mayo 2026 — Detalle por archivo</div>
 </div>
 <div class="page">
 
-  <!-- 3 · TABLA -->
   <div class="section">
     <div class="section-title">3. Detalle por Archivo de Censo</div>
     <table>
       <thead>
         <tr>
           <th>Fecha</th>
-          <th>Archivo fuente (VADIGU)</th>
-          <th>Ocu.<br>Fijas</th>
-          <th>Libres<br>Fijas</th>
+          <th>Archivo fuente</th>
+          <th>Ocu.<br>Fijas SM</th>
+          <th>Libres<br>Fijas SM</th>
           <th>%&nbsp;Ocu.</th>
-          <th>Transitorias<br>(53A/B)</th>
-          <th>Prestadas</th>
-          <th>Total<br>pacientes</th>
+          <th>Trans.<br>(53A/B)</th>
+          <th>Prest.</th>
+          <th>Total<br>Pac.</th>
           <th>Estado</th>
         </tr>
       </thead>
@@ -255,121 +202,144 @@ tfoot td:first-child { text-align: left; }
         <tr>
           <td>04/05/2026</td>
           <td>Censo Diario 04-05-2026 2011.csv</td>
-          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td>
-          <td>2</td><td>1</td><td>21</td>
+          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td><td>2</td><td>1</td><td>21</td>
           <td><span class="badge b-full">Lleno</span></td>
         </tr>
         <tr>
           <td>05/05/2026</td>
           <td>Censo Diario 05-05-2026 2011.csv</td>
-          <td><strong>17</strong></td><td>1</td><td>94,4&nbsp;%</td>
-          <td>2</td><td>1</td><td>20</td>
+          <td><strong>17</strong></td><td>1</td><td>94,4&nbsp;%</td><td>2</td><td>1</td><td>20</td>
           <td><span class="badge b-high">Alto</span></td>
         </tr>
         <tr>
           <td>06/05/2026</td>
           <td>Censo Diario 06-05-2026 2011.csv</td>
-          <td><strong>16</strong></td><td>2</td><td>88,9&nbsp;%</td>
-          <td>2</td><td>1</td><td>19</td>
+          <td><strong>16</strong></td><td>2</td><td>88,9&nbsp;%</td><td>2</td><td>1</td><td>19</td>
           <td><span class="badge b-high">Alto</span></td>
         </tr>
         <tr>
           <td>07/05/2026</td>
           <td>Censo Diario 07-05-2026 2011.csv</td>
-          <td><strong>17</strong></td><td>1</td><td>94,4&nbsp;%</td>
-          <td>1</td><td>1</td><td>19</td>
+          <td><strong>17</strong></td><td>1</td><td>94,4&nbsp;%</td><td>1</td><td>1</td><td>19</td>
           <td><span class="badge b-high">Alto</span></td>
         </tr>
         <tr>
           <td>08/05/2026</td>
           <td>Censo Diario 08-05-2026 2011.csv</td>
-          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td>
-          <td>1</td><td>1</td><td>20</td>
+          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td><td>1</td><td>1</td><td>20</td>
           <td><span class="badge b-full">Lleno</span></td>
         </tr>
         <tr>
           <td>27/05/2026</td>
           <td>Censo Diario 27-05-2026 1839.csv</td>
-          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td>
-          <td>0</td><td>0</td><td>18</td>
+          <td><strong>18</strong></td><td>0</td><td>100,0&nbsp;%</td><td>0</td><td>0</td><td>18</td>
           <td><span class="badge b-full">Lleno</span></td>
         </tr>
       </tbody>
       <tfoot>
         <tr>
-          <td colspan="2">Promedio (6 días con archivo)</td>
-          <td>17,3</td><td>0,7</td><td>96,3&nbsp;%</td>
-          <td>1,3</td><td>0,8</td><td>19,5</td><td></td>
+          <td colspan="2">Promedio — 6 días con archivo</td>
+          <td>17,3</td><td>0,7</td><td>96,3&nbsp;%</td><td>1,3</td><td>0,8</td><td>19,5</td><td></td>
         </tr>
       </tfoot>
     </table>
-    <p style="font-size:7.5pt;color:#999;margin-top:8px;font-style:italic;">
-      Fuente: archivos CSV exportados de VADIGU. Procesados con
-      <code>leer_archivo_censo()</code> + <code>filtrar_salud_mental()</code> +
-      <code>stats_servicio_sm()</code> — pipeline/censo/modulo_censo_mensual.py
+    <p style="font-size:7.5pt;color:#aaa;margin-top:8px;font-style:italic;">
+      Camas transitorias (53 A / 53 B — Trasplantados) y prestadas no forman parte del total de 18 camas fijas SM.
+      Procesado con <code>leer_archivo_censo()</code> + <code>filtrar_salud_mental()</code> + <code>stats_servicio_sm()</code>.
     </p>
   </div>
 
-  <!-- 4 · CORRECCIONES -->
-  <div class="section">
-    <div class="section-title">4. Correcciones Aplicadas — 28/05/2026</div>
-
-    <div class="fix data">
-      <div class="fix-ico">🛏</div>
-      <div>
-        <div class="fix-title">Eliminación de cama 50&nbsp;A de CAMAS_FIJAS_SM</div>
-        <div class="fix-body">
-          La lista contenía 19 identificadores; el total oficial del servicio es 18.
-          <strong>50 A</strong> era el único sin pareja A/B y no pertenece al conjunto
-          de camas fijas de Salud Mental. Todos los cálculos de ocupación, giro y
-          porcentaje usan ahora la lista corregida de 18 camas.
-        </div>
-        <span class="tag">modulo_censo_mensual.py — CAMAS_FIJAS_SM</span>
-      </div>
-    </div>
-
-    <div class="fix code">
-      <div class="fix-ico">📄</div>
-      <div>
-        <div class="fix-title">Fix _leer_csv: encoding ISO-8859-1 y header de metadata VADIGU</div>
-        <div class="fix-body">
-          Los archivos del 4 y 5 de mayo fallaban con <em>ParserError</em> y
-          <em>KeyError 'Estado'</em>. VADIGU exporta algunos CSV en ISO-8859-1 con
-          caracteres acentuados y agrega 4 líneas de metadata antes de la cabecera real.
-          La función fue reescrita para detectar encoding automáticamente
-          (utf-8-sig → utf-8 → latin-1) y saltar el bloque de metadata
-          buscando la primera línea que contenga "cama" y "estado".
-        </div>
-        <span class="tag">modulo_censo_mensual.py — _leer_csv()</span>
-      </div>
-    </div>
-
-    <div class="fix git">
-      <div class="fix-ico">📋</div>
-      <div>
-        <div class="fix-title">Eliminación de Co-Authored-By: Claude de todos los commits</div>
-        <div class="fix-body">
-          Se reescribieron los 72 commits del repositorio con
-          <code>git filter-branch --msg-filter</code> para eliminar el trailer
-          <code>Co-Authored-By: Claude Sonnet 4.6</code>. Todos los commits figuran
-          únicamente bajo el autor <strong>silvitagomez572-alt</strong>.
-        </div>
-        <span class="tag">git filter-branch — refs/heads/main</span>
-      </div>
-    </div>
-
-  </div>
 </div>
 
-<!-- ══ CIERRE ════════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════ PÁG 3 · FÓRMULAS ════════════════════════════ -->
+<div class="page-header" style="margin-top:18px; page-break-before:always;">
+  <div class="left">Censo Mensual · Salud Mental HISJB</div>
+  <div class="right">Mayo 2026 — Fórmulas estadísticas</div>
+</div>
+<div class="page">
+
+  <div class="section">
+    <div class="section-title">4. Fórmulas Estadísticas Utilizadas</div>
+
+    <div class="formula-grid">
+
+      <!-- Internados únicos -->
+      <div class="formula-card">
+        <div class="f-title">Internados únicos del mes</div>
+        <div class="f-math">n = | { p : Estado="Ocupada", Área=SM, Cama ∉ Trans. } |</div>
+        <div class="f-body">
+          Se filtran filas con Estado = <em>Ocupada</em> y Área = <em>Salud Mental</em>.
+          Se excluyen camas transitorias 53 A y 53 B.
+          Se deduplica por <code>codigoHC</code> (último registro por fecha de ingreso)
+          y luego por <code>Documento</code> / DNI (registro con mayor estada).
+          El resultado <strong>n</strong> es la cantidad de filas del DataFrame consolidado.
+        </div>
+        <div class="f-note">Mayo 2026: n = <strong>25</strong> pacientes únicos</div>
+      </div>
+
+      <!-- % Ocupación -->
+      <div class="formula-card">
+        <div class="f-title">Porcentaje de ocupación SM</div>
+        <div class="f-math">%Ocu = ( media(C_ocu_día) / C_total ) × 100</div>
+        <div class="f-body">
+          Para cada día con archivo se cuenta la cantidad de camas de
+          <code>CAMAS_FIJAS_SM</code> con Estado = <em>Ocupada</em>.
+          El porcentaje mensual es el promedio de esos valores diarios
+          dividido por <strong>C_total = 18</strong> (constante institucional).
+        </div>
+        <div class="f-note">Mayo 2026: media = 15,1 camas → <strong>83,8 %</strong></div>
+      </div>
+
+      <!-- Promedio estada -->
+      <div class="formula-card">
+        <div class="f-title">Promedio de estada</div>
+        <div class="f-math">Ē = (1/n) · Σ Eᵢ</div>
+        <div class="f-body">
+          E_i es la estada en días del paciente i según el campo
+          <code>Estada</code> de VADIGU (días desde ingreso hasta fecha del archivo).
+          Para pacientes en múltiples archivos se conserva el valor más alto.
+          Los valores no numéricos se descartan con <code>pd.to_numeric(errors='coerce')</code>.
+        </div>
+        <div class="f-note">Mayo 2026: Ē = <strong>35,6 días</strong>. Nota: refleja estada total desde el ingreso, no solo días del mes.</div>
+      </div>
+
+      <!-- Giro camas -->
+      <div class="formula-card">
+        <div class="f-title">Giro de camas</div>
+        <div class="f-math">G = n / C_pico</div>
+        <div class="f-body">
+          <strong>n</strong> = pacientes únicos del mes (fórmula 1).
+          <strong>C_pico</strong> = valor máximo de camas fijas SM ocupadas registrado
+          en cualquier día del mes (pico de <code>CAMAS_FIJAS_SM</code> con Estado = Ocupada).
+          Refleja cuántos pacientes distintos ocuparon cada cama en promedio.
+        </div>
+        <div class="f-note">Mayo 2026: n=25, C_pico=19 → G = <strong>1,32</strong>. Definición operativa; el giro epidemiológico clásico usa egresos/camas.</div>
+      </div>
+
+    </div>
+
+    <p style="font-size:8pt;color:#555;margin-top:18px;line-height:1.6;">
+      <strong>Constantes del módulo:</strong>
+      <code>CAMAS_FIJAS_SM</code> = 18 camas (51A, 51B, 52A, 52B, 63A–B, 66A–B, 68A–B, 69A–B, 70A–B, 71A–B, 72A–B) ·
+      <code>CAMAS_TRANSITORIAS</code> = [53 A, 53 B] ·
+      <code>TOTAL_CAMAS_FIJAS</code> = 18.<br>
+      Referencia de código: <code>pipeline/censo/modulo_censo_mensual.py</code> · <code>frontend/app.py</code>
+    </p>
+  </div>
+
+</div>
+
+<!-- ══════════════════════ CIERRE ═══════════════════════════════════════ -->
 <div class="page" style="page-break-before:always;">
   <div class="closing">
     <div class="salut">Sr. Fabián Acevedo</div>
-    <div class="msg">Es un honor trabajar con usted en el<br>Sistema HCD IA del HISJB.</div>
+    <div class="msg">
+      Es un honor trabajar con usted en el Sistema HCD IA del HISJB.
+    </div>
     <div class="rule2"></div>
-    <div class="sig">Atentamente,</div>
-    <div class="sys">Sistema HCD IA</div>
-    <div class="tagln">Inteligencia Artificial al servicio de la Salud Mental</div>
+    <div class="sign">Atentamente,</div>
+    <div class="sysnam">Sistema HCD IA</div>
+    <div class="syssub">Inteligencia Artificial al servicio de la Salud Mental del HISJB</div>
   </div>
   <div class="page-footer">
     <div>Hospital Interzonal San Juan Bautista · Catamarca · Servicio de Salud Mental</div>
@@ -377,23 +347,21 @@ tfoot td:first-child { text-align: left; }
   </div>
 </div>
 
-<!-- ══ CHART.JS ══════════════════════════════════════════════════════════ -->
+<!-- ══════════════════════ CHART.JS ═════════════════════════════════════ -->
 <script>
-// Todos los días de mayo (1-31) en el eje X
 const labels = Array.from({length:31}, (_,i) => `${String(i+1).padStart(2,'0')}/05`);
 
-// Datos reales: null para días sin archivo
-const datos = new Array(31).fill(null);
-datos[3]  = 18;  // día 04
-datos[4]  = 17;  // día 05
-datos[5]  = 16;  // día 06
-datos[6]  = 17;  // día 07
-datos[7]  = 18;  // día 08
-datos[26] = 18;  // día 27
+// null = día sin archivo
+const ocu = new Array(31).fill(null);
+ocu[3]  = 18;  // 04/05
+ocu[4]  = 17;  // 05/05
+ocu[5]  = 16;  // 06/05
+ocu[6]  = 17;  // 07/05
+ocu[7]  = 18;  // 08/05
+ocu[26] = 18;  // 27/05
 
-// Línea de capacidad máxima (18) y media mensual (83.8% × 18 = 15.08)
+const media    = new Array(31).fill(+(83.8 * 18 / 100).toFixed(2)); // ≈ 15.08
 const capacidad = new Array(31).fill(18);
-const media     = new Array(31).fill(+(83.8 * 18 / 100).toFixed(2)); // 15.08
 
 new Chart(document.getElementById('chart').getContext('2d'), {
   type: 'line',
@@ -402,62 +370,48 @@ new Chart(document.getElementById('chart').getContext('2d'), {
     datasets: [
       {
         label: 'Camas fijas SM ocupadas',
-        data: datos,
+        data: ocu,
         borderColor: '#0f3460',
         backgroundColor: ctx => {
-          const grad = ctx.chart.ctx.createLinearGradient(0,0,0,240);
-          grad.addColorStop(0,'rgba(15,52,96,0.20)');
-          grad.addColorStop(1,'rgba(15,52,96,0.01)');
-          return grad;
+          const g = ctx.chart.ctx.createLinearGradient(0,0,0,240);
+          g.addColorStop(0,'rgba(15,52,96,0.22)');
+          g.addColorStop(1,'rgba(15,52,96,0.01)');
+          return g;
         },
         borderWidth: 2.5,
         pointBackgroundColor: '#0f3460',
         pointBorderColor: '#fff',
         pointBorderWidth: 2,
-        pointRadius: ctx => datos[ctx.dataIndex] !== null ? 7 : 0,
+        pointRadius: d => ocu[d.dataIndex] !== null ? 7 : 0,
         pointHoverRadius: 9,
-        fill: true,
-        tension: 0.3,
-        spanGaps: false,
+        fill: true, tension: 0.3, spanGaps: false,
       },
       {
         label: 'Media mensual 83,8 % (15,1 camas)',
         data: media,
-        borderColor: '#3b82f6',
-        borderWidth: 1.8,
-        borderDash: [8,4],
-        pointRadius: 0,
-        fill: false,
+        borderColor: '#3b82f6', borderWidth: 1.8, borderDash: [8,4],
+        pointRadius: 0, fill: false,
       },
       {
         label: 'Capacidad máxima (18 camas)',
         data: capacidad,
-        borderColor: '#e94560',
-        borderWidth: 1.5,
-        borderDash: [4,3],
-        pointRadius: 0,
-        fill: false,
+        borderColor: '#e94560', borderWidth: 1.5, borderDash: [4,3],
+        pointRadius: 0, fill: false,
       }
     ]
   },
   options: {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: {
-        labels: { font:{size:9}, color:'#1a1a2e',
-          usePointStyle:true, pointStyleWidth:12, padding:16 }
-      },
+      legend: { labels: { font:{size:9}, color:'#1a1a2e', usePointStyle:true, pointStyleWidth:12, padding:16 } },
       tooltip: {
         callbacks: {
-          title: ctx => `${ctx[0].label} — Mayo 2026`,
-          label: ctx => {
-            const v = ctx.parsed.y;
-            if (ctx.datasetIndex === 0)
-              return v != null ? `Ocupadas: ${v} camas (${(v/18*100).toFixed(1)} %)` : 'Sin archivo';
-            if (ctx.datasetIndex === 1)
-              return `Media mensual: ${v.toFixed(1)} camas (83,8 %)`;
-            return `Capacidad máxima: ${v} camas`;
+          title: c => `${c[0].label} — Mayo 2026`,
+          label: c => {
+            const v = c.parsed.y;
+            if (c.datasetIndex===0) return v!=null ? `Ocupadas: ${v} camas (${(v/18*100).toFixed(1)} %)` : 'Sin archivo';
+            if (c.datasetIndex===1) return `Media mensual: ${v.toFixed(1)} camas (83,8 %)`;
+            return `Capacidad: ${v} camas`;
           }
         }
       }
@@ -465,16 +419,9 @@ new Chart(document.getElementById('chart').getContext('2d'), {
     scales: {
       y: {
         min: 10, max: 19,
-        ticks: {
-          stepSize: 1, font:{size:8.5},
-          callback: v => `${v}  (${(v/18*100).toFixed(0)} %)`
-        },
+        ticks: { stepSize:1, font:{size:8.5}, callback: v=>`${v}  (${(v/18*100).toFixed(0)} %)` },
         grid: { color:'rgba(0,0,0,0.05)' },
-        title: {
-          display:true,
-          text: 'Camas fijas SM ocupadas / 18',
-          font:{size:8.5, weight:'bold'}, color:'#4a6fa5'
-        }
+        title: { display:true, text:'Camas fijas SM ocupadas / 18', font:{size:8.5,weight:'bold'}, color:'#4a6fa5' }
       },
       x: {
         ticks: { font:{size:7.5}, maxRotation:45 },
