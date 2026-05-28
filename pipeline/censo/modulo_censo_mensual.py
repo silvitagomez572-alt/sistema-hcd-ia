@@ -34,7 +34,7 @@ ESTADO_OCUPADA = "ocupada"
 AREA_SALUD_MENTAL = "salud mental"
 
 CAMAS_FIJAS_SM = [
-    "50 A", "51 A", "51 B", "52A", "52B",
+    "51 A", "51 B", "52A", "52B",
     "63 A", "63 B", "66 A", "66 B", "68 A", "68 B",
     "69 A", "69 B", "70 A", "70 B", "71 A", "71 B",
     "72 A", "72 B",
