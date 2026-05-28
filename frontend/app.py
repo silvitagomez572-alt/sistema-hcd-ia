@@ -275,10 +275,78 @@ elif modulo == "Ingresar HC":
                 except Exception as e:
                     st.error(f"Error: {e}")
 elif modulo == "OCR":
+    import sys as _sys_ocr
+    import pathlib as _pl_ocr
+    _sys_ocr.path.insert(0, str(_pl_ocr.Path(__file__).resolve().parent.parent))
+    try:
+        from pipeline.ocr.modulo_ocr import procesar_archivo, texto_completo
+        _ocr_ok = True
+    except ImportError as _e:
+        _ocr_ok = False
+        _ocr_err = str(_e)
+
     st.title("OCR — Extracción de Texto")
-    st.caption("Módulo en desarrollo. Procesamiento de imágenes y PDFs escaneados.")
-    st.text_area("Resultado de muestra", value="13/11/2025 - 05:33\nNota enfermeria\nPaciente tranquila...", height=200)
-    st.success("Texto extraído.")
+    st.caption("Extrae texto de PDFs escaneados e imágenes usando Tesseract (idioma: español).")
+
+    if not _ocr_ok:
+        st.error(f"Módulo OCR no disponible: {_ocr_err}")
+        st.info("Instalá las dependencias con: `pip install pytesseract pdf2image` y `sudo apt-get install tesseract-ocr tesseract-ocr-spa poppler-utils`")
+        st.stop()
+
+    for _k in ("ocr_paginas", "ocr_nombre"):
+        if _k not in st.session_state:
+            st.session_state[_k] = None
+
+    archivo_ocr = st.file_uploader(
+        "Seleccioná un archivo para extraer texto",
+        type=["pdf", "jpg", "jpeg", "png"],
+        key="ocr_uploader",
+    )
+
+    if archivo_ocr and st.button("Procesar con OCR", key="ocr_btn"):
+        with st.spinner(f"Extrayendo texto de {archivo_ocr.name}…"):
+            try:
+                _paginas = procesar_archivo(archivo_ocr.getvalue(), archivo_ocr.name)
+                st.session_state["ocr_paginas"] = _paginas
+                st.session_state["ocr_nombre"] = archivo_ocr.name
+            except Exception as _e:
+                st.error(f"Error al procesar: {_e}")
+                st.session_state["ocr_paginas"] = None
+
+    if st.session_state["ocr_paginas"]:
+        _paginas = st.session_state["ocr_paginas"]
+        _nombre_base = st.session_state["ocr_nombre"] or "resultado"
+        _n_pags = len(_paginas)
+        _chars = sum(len(p["texto"]) for p in _paginas)
+
+        c1, c2 = st.columns(2)
+        c1.metric("Páginas procesadas", _n_pags)
+        c2.metric("Caracteres extraídos", f"{_chars:,}")
+
+        if _chars == 0:
+            st.warning("No se detectó texto. El archivo puede ser una imagen de baja resolución o sin texto reconocible.")
+
+        st.divider()
+        for _p in _paginas:
+            _label = f"Página {_p['pagina']} de {_n_pags}" if _n_pags > 1 else "Texto extraído"
+            with st.expander(_label, expanded=(_n_pags == 1)):
+                st.text_area(
+                    _label,
+                    value=_p["texto"],
+                    height=300,
+                    key=f"ocr_txt_p{_p['pagina']}",
+                    label_visibility="collapsed",
+                )
+
+        st.divider()
+        _nombre_dl = _pl_ocr.Path(_nombre_base).stem + "_ocr.txt"
+        st.download_button(
+            "⬇ Descargar texto completo (.txt)",
+            texto_completo(_paginas),
+            file_name=_nombre_dl,
+            mime="text/plain",
+            key="ocr_download",
+        )
 elif modulo == "Pseudonimizacion":
     st.title("Pseudonimización")
     c1, c2 = st.columns(2)
