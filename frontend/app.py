@@ -26,7 +26,7 @@ if modulo == "📋 Censo Mensual":
     import pathlib as _pl
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
     try:
-        from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental
+        from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental, TOTAL_CAMAS_FIJAS
         _censo_ok = True
     except ImportError as _e:
         _censo_ok = False
@@ -67,9 +67,10 @@ if modulo == "📋 Censo Mensual":
                         _total_c = len(_df_raw)
                         _ocu = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "ocupada").sum()) if "Estado" in _df_raw.columns else 0
                         _lib = int((_df_raw["Estado"].map(lambda x: str(x).strip().lower()) == "libre").sum()) if "Estado" in _df_raw.columns else 0
-                        _sm_ocu = len(filtrar_salud_mental(_df_raw))
-                        stats_lista.append({"Archivo": _arch.name, "Total camas": _total_c, "Ocupadas": _ocu, "Libres": _lib, "SM Ocupadas": _sm_ocu})
                         _df_sm = filtrar_salud_mental(_df_raw)
+                        _sm_ocu = len(_df_sm)
+                        _sm_fijas_ocu = int((_df_sm["tipo_cama"] == "Fija SM").sum()) if "tipo_cama" in _df_sm.columns else 0
+                        stats_lista.append({"Archivo": _arch.name, "Total camas": _total_c, "Ocupadas": _ocu, "Libres": _lib, "SM Ocupadas": _sm_ocu, "SM Fijas Ocu": _sm_fijas_ocu})
                         if not _df_sm.empty:
                             _df_sm = _df_sm.copy()
                             _df_sm["_archivo"] = _arch.name
@@ -107,7 +108,7 @@ if modulo == "📋 Censo Mensual":
             if _df_cons2 is not None and not _df_cons2.empty:
                 st.divider()
                 st.warning("⚠️ Información de uso interno — no compartir")
-                _cols_dedup = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area"] if c in _df_cons2.columns]
+                _cols_dedup = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area", "tipo_cama"] if c in _df_cons2.columns]
                 if _cols_dedup:
                     st.subheader("Pacientes internados — Salud Mental")
                     st.caption("Consultá VADIGU para identificar el paciente por codigoHC.")
@@ -128,7 +129,7 @@ if modulo == "📋 Censo Mensual":
                     if "Ingreso" in _df_tabla.columns:
                         _df_tabla["Ingreso"] = pd.to_datetime(_df_tabla["Ingreso"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
                     # Solo pantalla — Documento visible pero no se persiste en ningún lado
-                    _cols_visibles = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "Area"] if c in _df_tabla.columns]
+                    _cols_visibles = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "tipo_cama"] if c in _df_tabla.columns]
                     st.dataframe(
                         _df_tabla[_cols_visibles],
                         use_container_width=True,
@@ -138,7 +139,7 @@ if modulo == "📋 Censo Mensual":
                             "Documento": st.column_config.TextColumn("Documento", width="medium"),
                             "Ingreso":   st.column_config.TextColumn("Ingreso",   width="small"),
                             "Estada":    st.column_config.TextColumn("Estada",    width="small"),
-                            "Area":      st.column_config.TextColumn("Area",      width="medium"),
+                            "tipo_cama": st.column_config.TextColumn("Tipo cama", width="medium"),
                         },
                     )
 
@@ -152,8 +153,8 @@ if modulo == "📋 Censo Mensual":
             _n_pac = len(_df_censo)
 
             _porc_ocu = None
-            if _df_st2 is not None and _df_st2["Total camas"].sum() > 0:
-                _porc_ocu = round(100 * _df_st2["SM Ocupadas"].sum() / _df_st2["Total camas"].sum(), 1)
+            if _df_st2 is not None and "SM Fijas Ocu" in _df_st2.columns:
+                _porc_ocu = round(100 * _df_st2["SM Fijas Ocu"].mean() / TOTAL_CAMAS_FIJAS, 1)
 
             _prom_estada = None
             if "Estada" in _df_censo.columns:
@@ -162,8 +163,8 @@ if modulo == "📋 Censo Mensual":
                     _prom_estada = round(float(_estada_num.mean()), 1)
 
             _giro = None
-            if _df_st2 is not None and _df_st2["SM Ocupadas"].max() > 0:
-                _giro = round(_n_pac / _df_st2["SM Ocupadas"].max(), 2)
+            if _df_st2 is not None and "SM Fijas Ocu" in _df_st2.columns and _df_st2["SM Fijas Ocu"].max() > 0:
+                _giro = round(_n_pac / _df_st2["SM Fijas Ocu"].max(), 2)
 
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total pacientes SM", _n_pac)
