@@ -177,7 +177,7 @@ if modulo == "📋 Censo Mensual":
                 def _ext_fecha(nombre):
                     _m = _re2.search(r'(\d{2}[-_/]\d{2}[-_/]\d{4}|\d{4}[-_/]\d{2}[-_/]\d{2})', nombre)
                     return _m.group(1).replace("_", "/").replace("-", "/") if _m else nombre
-                _df_chart = _df_st2[["Archivo", "SM Ocupadas"]].copy()
+                _df_chart = _df_st2[["Archivo", "Ocupadas"]].copy()
                 _df_chart["Día"] = _df_chart["Archivo"].map(_ext_fecha)
                 st.subheader("Ocupación SM por día")
                 _ch = (
@@ -185,8 +185,8 @@ if modulo == "📋 Censo Mensual":
                     .mark_line(point=True, color="#4C78A8")
                     .encode(
                         x=alt.X("Día:N", title="Día / Archivo", sort=None),
-                        y=alt.Y("SM Ocupadas:Q", title="Camas ocupadas SM"),
-                        tooltip=["Día", "SM Ocupadas"],
+                        y=alt.Y("Ocupadas:Q", title="Camas fijas SM ocupadas"),
+                        tooltip=["Día", "Ocupadas"],
                     )
                     .properties(height=260)
                 )
