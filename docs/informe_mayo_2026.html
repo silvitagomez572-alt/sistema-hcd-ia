@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informe Censo Mensual — Mayo 2026 · Salud Mental HISJB</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-size: 11pt;
+    color: #1a1a2e;
+    background: #fff;
+    padding: 0;
+  }
+
+  /* ── PORTADA ─────────────────────────────────────────────── */
+  .cover {
+    page-break-after: always;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    color: #fff;
+    padding: 60px 40px;
+  }
+
+  .cover .logo-text {
+    font-size: 10pt;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #a8c5da;
+    margin-bottom: 32px;
+    font-weight: 300;
+  }
+
+  .cover h1 {
+    font-size: 32pt;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 12px;
+    color: #fff;
+  }
+
+  .cover h2 {
+    font-size: 18pt;
+    font-weight: 300;
+    color: #7ec8e3;
+    margin-bottom: 48px;
+  }
+
+  .cover .divider {
+    width: 80px;
+    height: 3px;
+    background: #e94560;
+    border-radius: 2px;
+    margin: 0 auto 48px;
+  }
+
+  .cover .meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 40px;
+    text-align: left;
+    font-size: 9.5pt;
+    color: #a8c5da;
+    max-width: 480px;
+  }
+
+  .cover .meta-grid strong { color: #fff; }
+
+  .cover .stamp {
+    margin-top: 64px;
+    font-size: 8pt;
+    color: #4a6fa5;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* ── CUERPO ──────────────────────────────────────────────── */
+  .page {
+    padding: 40px 50px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .section {
+    margin-bottom: 40px;
+    page-break-inside: avoid;
+  }
+
+  .section-title {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #0f3460;
+    border-bottom: 2px solid #e94560;
+    padding-bottom: 6px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ── TARJETAS ESTADÍSTICAS ───────────────────────────────── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+
+  .stat-card {
+    background: linear-gradient(135deg, #f8faff 0%, #e8f0fe 100%);
+    border: 1px solid #c8d8f8;
+    border-radius: 10px;
+    padding: 18px 14px;
+    text-align: center;
+  }
+
+  .stat-card .stat-value {
+    font-size: 24pt;
+    font-weight: 700;
+    color: #0f3460;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .stat-card .stat-label {
+    font-size: 8pt;
+    color: #4a6fa5;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+
+  .stat-card .stat-sub {
+    font-size: 7.5pt;
+    color: #888;
+    margin-top: 4px;
+  }
+
+  .stat-card.accent .stat-value { color: #e94560; }
+
+  /* ── GRÁFICO ─────────────────────────────────────────────── */
+  .chart-container {
+    background: #fafbff;
+    border: 1px solid #dde6f8;
+    border-radius: 10px;
+    padding: 20px;
+    position: relative;
+    height: 260px;
+  }
+
+  .chart-note {
+    font-size: 8pt;
+    color: #888;
+    margin-top: 8px;
+    text-align: center;
+    font-style: italic;
+  }
+
+  /* ── TABLA ───────────────────────────────────────────────── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+  }
+
+  thead tr {
+    background: #0f3460;
+    color: #fff;
+  }
+
+  thead th {
+    padding: 9px 10px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 8.5pt;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  thead th:first-child { text-align: left; }
+
+  tbody tr:nth-child(even) { background: #f4f7ff; }
+  tbody tr:hover { background: #eaf0ff; }
+
+  tbody td {
+    padding: 8px 10px;
+    text-align: center;
+    border-bottom: 1px solid #e8edf8;
+    vertical-align: middle;
+  }
+
+  tbody td:first-child { text-align: left; font-weight: 500; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 8pt;
+    font-weight: 600;
+  }
+
+  .badge-full { background: #ffeaea; color: #c0392b; }
+  .badge-high { background: #fff3e0; color: #e67e22; }
+  .badge-ok   { background: #e8f5e9; color: #27ae60; }
+
+  tfoot td {
+    background: #0f3460;
+    color: #fff;
+    font-weight: 700;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 9pt;
+  }
+
+  tfoot td:first-child { text-align: left; }
+
+  /* ── CORRECCIONES ────────────────────────────────────────── */
+  .fix-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .fix-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border-left: 4px solid;
+    font-size: 10pt;
+  }
+
+  .fix-list li.fix-data {
+    background: #fff8e1;
+    border-color: #f59e0b;
+  }
+
+  .fix-list li.fix-code {
+    background: #e8f5e9;
+    border-color: #27ae60;
+  }
+
+  .fix-list li.fix-doc {
+    background: #e8f0fe;
+    border-color: #3b82f6;
+  }
+
+  .fix-icon {
+    font-size: 14pt;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .fix-title { font-weight: 700; margin-bottom: 3px; }
+  .fix-desc { color: #555; font-size: 9.5pt; }
+  .fix-code-tag {
+    display: inline-block;
+    background: #1a1a2e;
+    color: #7ec8e3;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 8pt;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+  }
+
+  /* ── CIERRE ──────────────────────────────────────────────── */
+  .closing {
+    page-break-before: always;
+    background: linear-gradient(160deg, #0f3460 0%, #16213e 100%);
+    border-radius: 14px;
+    padding: 50px 48px;
+    color: #fff;
+    text-align: center;
+    margin-top: 40px;
+  }
+
+  .closing .salutation {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #7ec8e3;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+  }
+
+  .closing .message {
+    font-size: 13pt;
+    font-weight: 300;
+    line-height: 1.7;
+    color: #d0e4f7;
+    max-width: 580px;
+    margin: 0 auto 36px;
+  }
+
+  .closing .divider-sm {
+    width: 50px;
+    height: 2px;
+    background: #e94560;
+    margin: 0 auto 28px;
+  }
+
+  .closing .signature {
+    font-size: 10pt;
+    color: #a8c5da;
+    letter-spacing: 1px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .closing .system-tag {
+    margin-top: 12px;
+    font-size: 8pt;
+    color: #4a6fa5;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* ── HEADER PÁGINAS ──────────────────────────────────────── */
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 50px;
+    border-bottom: 2px solid #0f3460;
+    margin-bottom: 30px;
+    page-break-after: avoid;
+  }
+
+  .page-header .title-left {
+    font-size: 9pt;
+    font-weight: 700;
+    color: #0f3460;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .page-header .title-right {
+    font-size: 8pt;
+    color: #888;
+  }
+
+  /* ── FOOTER ──────────────────────────────────────────────── */
+  .page-footer {
+    border-top: 1px solid #dde6f8;
+    padding: 14px 50px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    color: #aaa;
+    margin-top: 40px;
+  }
+
+  .highlight-box {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 9.5pt;
+    color: #1e40af;
+    margin-bottom: 16px;
+  }
+
+  @media print {
+    body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .page-break { page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ PORTADA ═══════════════════════════════ -->
+<div class="cover">
+  <div class="logo-text">Hospital Interzonal San Juan Bautista · Catamarca</div>
+  <h1>Informe de Censo<br>Mensual</h1>
+  <h2>Servicio de Salud Mental</h2>
+  <div class="divider"></div>
+  <div class="meta-grid">
+    <div><strong>Período</strong></div>
+    <div>Mayo 2026</div>
+    <div><strong>Servicio</strong></div>
+    <div>Salud Mental — HISJB</div>
+    <div><strong>Sistema</strong></div>
+    <div>HCD IA · Módulo Censo Mensual</div>
+    <div><strong>Generado</strong></div>
+    <div>28 de mayo de 2026</div>
+    <div><strong>Archivos procesados</strong></div>
+    <div>6 censos diarios</div>
+    <div><strong>Camas fijas SM</strong></div>
+    <div>18 (CAMAS_FIJAS_SM)</div>
+  </div>
+  <div class="stamp">Sistema HCD IA — Inteligencia Artificial al servicio de la Salud Mental</div>
+</div>
+
+<!-- ═════════════════════════ PÁGINA 1: ESTADÍSTICAS ══════════════════════ -->
+<div class="page-header">
+  <div class="title-left">Censo Mensual · Salud Mental HISJB</div>
+  <div class="title-right">Mayo 2026</div>
+</div>
+
+<div class="page">
+
+  <!-- 1. RESUMEN ESTADÍSTICO -->
+  <div class="section">
+    <div class="section-title">1. Estadísticas del Mes</div>
+
+    <div class="highlight-box">
+      Indicadores consolidados sobre <strong>18 camas fijas</strong> de Salud Mental.
+      Las camas transitorias (53 A / 53 B — trasplantados) se informan separadamente y no afectan los totales del servicio.
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value">25</div>
+        <div class="stat-label">Pacientes únicos</div>
+        <div class="stat-sub">Dedup. por HC + DNI</div>
+      </div>
+      <div class="stat-card accent">
+        <div class="stat-value">83,8%</div>
+        <div class="stat-label">% Ocupación SM</div>
+        <div class="stat-sub">Media diaria / 18 camas</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">35,6</div>
+        <div class="stat-label">Promedio estada</div>
+        <div class="stat-sub">Días (campo VADIGU)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">1,32</div>
+        <div class="stat-label">Giro de camas</div>
+        <div class="stat-sub">Pacientes / pico diario</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. GRÁFICO -->
+  <div class="section">
+    <div class="section-title">2. Evolución de Ocupación por Día</div>
+    <div class="chart-container">
+      <canvas id="ocupacionChart"></canvas>
+    </div>
+    <div class="chart-note">
+      Días con archivo disponible: 04, 05, 06, 07, 08 y 27 de mayo de 2026.
+      La línea punteada indica el 83,8 % de referencia mensual.
+    </div>
+  </div>
+
+</div>
+
+<!-- ═════════════════════════ PÁGINA 2: TABLA DETALLE ═════════════════════ -->
+<div class="page-header" style="margin-top: 30px;">
+  <div class="title-left">Censo Mensual · Salud Mental HISJB</div>
+  <div class="title-right">Mayo 2026 — Detalle por Archivo</div>
+</div>
+
+<div class="page">
+
+  <!-- 3. TABLA DETALLE -->
+  <div class="section">
+    <div class="section-title">3. Detalle por Archivo de Censo</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Archivo fuente</th>
+          <th>Ocu.<br>Fijas SM</th>
+          <th>Libres<br>Fijas SM</th>
+          <th>% Ocu.</th>
+          <th>Transitorias<br>(53 A/B)</th>
+          <th>Prestadas</th>
+          <th>Total<br>pacientes</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>04/05/2026</td>
+          <td>Censo Diario 04-05-2026 2011.csv</td>
+          <td><strong>18</strong></td>
+          <td>0</td>
+          <td>100,0 %</td>
+          <td>2</td>
+          <td>1</td>
+          <td>21</td>
+          <td><span class="badge badge-full">Lleno</span></td>
+        </tr>
+        <tr>
+          <td>05/05/2026</td>
+          <td>Censo Diario 05-05-2026 2011.csv</td>
+          <td><strong>17</strong></td>
+          <td>1</td>
+          <td>94,4 %</td>
+          <td>2</td>
+          <td>1</td>
+          <td>20</td>
+          <td><span class="badge badge-high">Alto</span></td>
+        </tr>
+        <tr>
+          <td>06/05/2026</td>
+          <td>Censo Diario 06-05-2026 2011.csv</td>
+          <td><strong>16</strong></td>
+          <td>2</td>
+          <td>88,9 %</td>
+          <td>2</td>
+          <td>1</td>
+          <td>19</td>
+          <td><span class="badge badge-high">Alto</span></td>
+        </tr>
+        <tr>
+          <td>07/05/2026</td>
+          <td>Censo Diario 07-05-2026 2011.csv</td>
+          <td><strong>17</strong></td>
+          <td>1</td>
+          <td>94,4 %</td>
+          <td>1</td>
+          <td>1</td>
+          <td>19</td>
+          <td><span class="badge badge-high">Alto</span></td>
+        </tr>
+        <tr>
+          <td>08/05/2026</td>
+          <td>Censo Diario 08-05-2026 2011.csv</td>
+          <td><strong>18</strong></td>
+          <td>0</td>
+          <td>100,0 %</td>
+          <td>1</td>
+          <td>1</td>
+          <td>20</td>
+          <td><span class="badge badge-full">Lleno</span></td>
+        </tr>
+        <tr>
+          <td>27/05/2026</td>
+          <td>Censo Diario 27-05-2026 1839.csv</td>
+          <td><strong>18</strong></td>
+          <td>0</td>
+          <td>100,0 %</td>
+          <td>0</td>
+          <td>0</td>
+          <td>18</td>
+          <td><span class="badge badge-full">Lleno</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2">Promedio del período (6 días)</td>
+          <td>17,3</td>
+          <td>0,7</td>
+          <td>96,3 %</td>
+          <td>1,3</td>
+          <td>0,8</td>
+          <td>19,5</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    <p style="font-size:8pt;color:#888;margin-top:10px;font-style:italic;">
+      * El porcentaje de ocupación mensual (83,8 %) incluye días sin archivo en el denominador temporal del mes completo.
+      El promedio de la tabla (96,3 %) corresponde únicamente a los 6 días con archivo disponible.
+    </p>
+  </div>
+
+  <!-- 4. CORRECCIONES -->
+  <div class="section">
+    <div class="section-title">4. Correcciones Realizadas — 28/05/2026</div>
+    <ul class="fix-list">
+
+      <li class="fix-data">
+        <div class="fix-icon">🛏</div>
+        <div>
+          <div class="fix-title">Eliminación de cama 50 A de CAMAS_FIJAS_SM</div>
+          <div class="fix-desc">
+            La lista de camas fijas contenía 19 identificadores pero el total oficial del servicio es 18.
+            Se identificó que <strong>50 A</strong> era el único identificador sin pareja A/B y no pertenece
+            al conjunto de camas fijas de Salud Mental.
+            Todos los cálculos de ocupación, giro y porcentaje ahora usan la lista de 18 camas corregida.
+          </div>
+          <span class="fix-code-tag">pipeline/censo/modulo_censo_mensual.py — CAMAS_FIJAS_SM</span>
+        </div>
+      </li>
+
+      <li class="fix-code">
+        <div class="fix-icon">📄</div>
+        <div>
+          <div class="fix-title">Fix lectura CSV con encoding ISO-8859-1 y header de metadata VADIGU</div>
+          <div class="fix-desc">
+            Los archivos del <strong>4 y 5 de mayo</strong> fallaban con <em>ParserError</em> y <em>KeyError 'Estado'</em>.
+            Causa 1: VADIGU exporta algunos CSV en ISO-8859-1 con caracteres acentuados (á, ó, ü).
+            Causa 2: 4 líneas de metadata (Hospital/Servicio/Area/Fecha) preceden la cabecera real de la tabla.
+            La función <code>_leer_csv</code> fue reescrita para detectar encoding automáticamente
+            (utf-8-sig → utf-8 → latin-1) y saltar el bloque de metadata buscando la primera línea
+            que contenga los campos "cama" y "estado".
+          </div>
+          <span class="fix-code-tag">pipeline/censo/modulo_censo_mensual.py — _leer_csv()</span>
+        </div>
+      </li>
+
+      <li class="fix-doc">
+        <div class="fix-icon">📋</div>
+        <div>
+          <div class="fix-title">Eliminación de Co-Authored-By: Claude de todos los commits</div>
+          <div class="fix-desc">
+            Se reescribieron los 72 commits del repositorio local para eliminar el trailer
+            <code>Co-Authored-By: Claude Sonnet 4.6</code> que GitHub mostraba como co-autor.
+            Todos los commits figuran únicamente bajo el autor <strong>silvitagomez572-alt</strong>.
+          </div>
+          <span class="fix-code-tag">git filter-branch — refs/heads/main</span>
+        </div>
+      </li>
+
+    </ul>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════ CIERRE ══════════════════════════════════ -->
+<div class="page" style="page-break-before: always;">
+  <div class="closing">
+    <div class="salutation">Sr. Fabián Acevedo</div>
+    <div class="message">
+      Es un honor trabajar con usted en el Sistema HCD IA del HISJB.
+    </div>
+    <div class="divider-sm"></div>
+    <div class="signature">Atentamente,</div>
+    <div class="signature" style="margin-top:10px; font-size:12pt; color:#fff; font-weight:700; text-transform:none; letter-spacing:0;">
+      Sistema HCD IA
+    </div>
+    <div class="system-tag">Inteligencia Artificial al servicio de la Salud Mental</div>
+  </div>
+
+  <div class="page-footer">
+    <div>Hospital Interzonal San Juan Bautista · Catamarca · Servicio de Salud Mental</div>
+    <div>Generado el 28/05/2026 · Sistema HCD IA</div>
+  </div>
+</div>
+
+<!-- ════════════════════════ CHART.JS SCRIPT ══════════════════════════════ -->
+<script>
+const ctx = document.getElementById('ocupacionChart').getContext('2d');
+
+const dias    = ['04/05', '05/05', '06/05', '07/05', '08/05', '27/05'];
+const ocupadas = [18, 17, 16, 17, 18, 18];
+const referencia = Array(dias.length).fill(83.8 * 18 / 100); // 15.08
+
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: dias,
+    datasets: [
+      {
+        label: 'Camas fijas SM ocupadas',
+        data: ocupadas,
+        borderColor: '#0f3460',
+        backgroundColor: 'rgba(15,52,96,0.12)',
+        borderWidth: 2.5,
+        pointBackgroundColor: '#0f3460',
+        pointRadius: 6,
+        pointHoverRadius: 8,
+        fill: true,
+        tension: 0.3,
+      },
+      {
+        label: 'Referencia mensual (83,8 %)',
+        data: referencia,
+        borderColor: '#e94560',
+        borderWidth: 2,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          font: { family: 'Inter, Segoe UI, sans-serif', size: 10 },
+          color: '#1a1a2e'
+        }
+      },
+      tooltip: {
+        callbacks: {
+          label: function(ctx) {
+            if (ctx.datasetIndex === 0) {
+              const pct = (ctx.parsed.y / 18 * 100).toFixed(1);
+              return `${ctx.parsed.y} camas (${pct}%)`;
+            }
+            return `Ref. mensual: ${ctx.parsed.y.toFixed(1)} camas`;
+          }
+        }
+      }
+    },
+    scales: {
+      y: {
+        min: 12,
+        max: 18,
+        ticks: {
+          stepSize: 1,
+          font: { size: 9 },
+          callback: v => `${v} (${(v/18*100).toFixed(0)}%)`
+        },
+        grid: { color: 'rgba(0,0,0,0.06)' },
+        title: {
+          display: true,
+          text: 'Camas ocupadas / 18',
+          font: { size: 9, weight: 'bold' },
+          color: '#4a6fa5'
+        }
+      },
+      x: {
+        ticks: { font: { size: 9 } },
+        grid: { color: 'rgba(0,0,0,0.04)' }
+      }
+    }
+  }
+});
+</script>
+
+</body>
+</html>
