@@ -33,9 +33,48 @@ COLUMNAS_ESPERADAS = ["Cama", "Estado", "Area", "Paciente", "Edad", "Documento",
 ESTADO_OCUPADA = "ocupada"
 AREA_SALUD_MENTAL = "salud mental"
 
+CAMAS_FIJAS_SM = [
+    "50 A", "51 A", "51 B", "52A", "52B",
+    "63 A", "63 B", "66 A", "66 B", "68 A", "68 B",
+    "69 A", "69 B", "70 A", "70 B", "71 A", "71 B",
+    "72 A", "72 B",
+]
+CAMAS_TRANSITORIAS = ["53 A", "53 B"]
+TOTAL_CAMAS_FIJAS = 18
+
 
 def _normalizar(valor: str) -> str:
     return str(valor).strip().lower()
+
+
+def clasificar_tipo_cama(cama: str) -> str:
+    """Clasifica una cama en Fija SM, Transitoria o Prestada según las listas institucionales."""
+    cama_norm = str(cama).strip()
+    if cama_norm in CAMAS_FIJAS_SM:
+        return "Fija SM"
+    if cama_norm in CAMAS_TRANSITORIAS:
+        return "Transitoria - Trasplantados"
+    return "Prestada de otro servicio"
+
+
+def deduplicar_cama_dia(df: pd.DataFrame) -> pd.DataFrame:
+    """Elimina duplicados de cama en el mismo archivo (día), conservando el de mayor Ingreso."""
+    if "Cama" not in df.columns or "_archivo" not in df.columns:
+        return df
+    if "Ingreso" not in df.columns or df.empty:
+        return df.drop_duplicates(subset=["Cama", "_archivo"], keep="last").reset_index(drop=True)
+    df = df.copy()
+    ingreso_num = pd.to_numeric(df["Ingreso"], errors="coerce")
+    if ingreso_num.notna().any():
+        df["_ingreso_sort"] = ingreso_num
+    else:
+        df["_ingreso_sort"] = pd.to_datetime(df["Ingreso"], dayfirst=True, errors="coerce")
+    df = (
+        df.sort_values("_ingreso_sort", na_position="first")
+        .drop_duplicates(subset=["Cama", "_archivo"], keep="last")
+        .reset_index(drop=True)
+    )
+    return df.drop(columns=["_ingreso_sort"])
 
 
 def _leer_csv(ruta: pathlib.Path) -> pd.DataFrame:
@@ -324,7 +363,7 @@ def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
 
 
 def filtrar_salud_mental(df: pd.DataFrame) -> pd.DataFrame:
-    """Filtra filas con Estado=Ocupada y Area=Salud Mental."""
+    """Filtra Estado=Ocupada y Area=Salud Mental, clasifica tipo de cama y deduplica por cama+día."""
     if "Estado" not in df.columns or "Area" not in df.columns:
         raise KeyError("El DataFrame no tiene columnas 'Estado' y/o 'Area'")
     mask = (
@@ -332,7 +371,11 @@ def filtrar_salud_mental(df: pd.DataFrame) -> pd.DataFrame:
     ) & (
         df["Area"].map(_normalizar) == AREA_SALUD_MENTAL
     )
-    return df[mask].copy()
+    resultado = df[mask].copy()
+    if "Cama" in resultado.columns:
+        resultado["tipo_cama"] = resultado["Cama"].map(clasificar_tipo_cama)
+    resultado = deduplicar_cama_dia(resultado)
+    return resultado
 
 
 def consolidar_mes(
@@ -385,7 +428,7 @@ def consolidar_mes(
     # Ordenar por Ingreso si existe para quedarse con el registro más reciente
     if "Ingreso" in consolidado.columns:
         consolidado["Ingreso"] = pd.to_datetime(
-            consolidado["Ingreso"], dayfirst=True, errors="coerce"
+            consolidado["Ingreso"], unit="ms", errors="coerce"
         )
         consolidado = consolidado.sort_values("Ingreso", na_position="first")
 
@@ -396,9 +439,23 @@ def consolidar_mes(
 
 
 def resumen_mensual(df: pd.DataFrame) -> dict:
-    """Devuelve métricas básicas del DataFrame consolidado."""
+    """Devuelve métricas del DataFrame consolidado. % ocupación sobre CAMAS_FIJAS_SM (denominador: TOTAL_CAMAS_FIJAS)."""
+    camas_fijas_ocu = 0
+    camas_transitorias_ocu = 0
+    camas_prestadas_ocu = 0
+    if "tipo_cama" in df.columns:
+        camas_fijas_ocu = int((df["tipo_cama"] == "Fija SM").sum())
+        camas_transitorias_ocu = int((df["tipo_cama"] == "Transitoria - Trasplantados").sum())
+        camas_prestadas_ocu = int((df["tipo_cama"] == "Prestada de otro servicio").sum())
+    elif "Cama" in df.columns:
+        camas_fijas_ocu = int(df["Cama"].map(clasificar_tipo_cama).eq("Fija SM").sum())
+    porc_ocupacion = round(100 * camas_fijas_ocu / TOTAL_CAMAS_FIJAS, 1) if TOTAL_CAMAS_FIJAS > 0 else None
     return {
         "total_pacientes": len(df),
+        "camas_fijas_ocupadas": camas_fijas_ocu,
+        "porcentaje_ocupacion_sm": porc_ocupacion,
+        "camas_transitorias_ocupadas": camas_transitorias_ocu,
+        "camas_prestadas_de_otro_servicio": camas_prestadas_ocu,
         "camas_ocupadas": df["Cama"].nunique() if "Cama" in df.columns else None,
         "edad_promedio": (
             pd.to_numeric(df["Edad"], errors="coerce").mean().__round__(1)
