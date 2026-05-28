@@ -102,7 +102,7 @@ if modulo == "📋 Censo Mensual":
             c2.metric("Pico camas fijas SM ocupadas", int(_df_st["Ocupadas"].max()))
             c3.metric("Pico camas fijas SM libres", int(_df_st["Libres"].max()))
             st.subheader("Detalle por archivo")
-            st.dataframe(_df_st, use_container_width=True, hide_index=True)
+            st.dataframe(_df_st, width='stretch', hide_index=True)
 
             if _df_cons2 is not None and not _df_cons2.empty:
                 st.divider()
@@ -131,7 +131,7 @@ if modulo == "📋 Censo Mensual":
                     _cols_visibles = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "tipo_cama"] if c in _df_tabla.columns]
                     st.dataframe(
                         _df_tabla[_cols_visibles],
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True,
                         column_config={
                             "codigoHC":  st.column_config.TextColumn("codigoHC",  width="medium"),
@@ -240,7 +240,7 @@ if modulo == "📋 Censo Mensual":
                 _df_vis = _df_pend[_df_pend["Estado"] == "✅ Procesado"]
             else:
                 _df_vis = _df_pend
-            st.dataframe(_df_vis, use_container_width=True, hide_index=True)
+            st.dataframe(_df_vis, width='stretch', hide_index=True)
 
             _solo_pend = _df_pend[_df_pend["Estado"] == "⏳ Pendiente"]
             if not _solo_pend.empty:
@@ -329,7 +329,7 @@ elif modulo == "RAG":
                     "Tamaño (KB)": d["tamano_kb"],
                     "Estado": "✅ Indexado" if d["indexado"] else "⏳ Pendiente",
                 })
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
         else:
             st.info("No hay documentos cargados aún.")
 
@@ -688,7 +688,7 @@ elif modulo == "Metricas HCD":
         st.subheader(f"Detalle auditable de interconsultas detectadas ({len(ics_all)})")
         df_ics = pd.DataFrame(ics_all).sort_values(["Score", "Contar"], ascending=[False, False])
         df_ics = df_ics.rename(columns={"Score": "Confianza", "Contar": "Incluir en conteo"})
-        st.dataframe(df_ics, use_container_width=True, hide_index=True)
+        st.dataframe(df_ics, width='stretch', hide_index=True)
     else:
         st.info("No se detectaron interconsultas externas.")
 elif modulo == "Resumen HCs":
@@ -747,7 +747,7 @@ elif modulo == "Resumen HCs":
             "Reingresos": c["reingresos"],
         })
     df_tabla = pd.DataFrame(filas)
-    st.dataframe(df_tabla, use_container_width=True, hide_index=True)
+    st.dataframe(df_tabla, width='stretch', hide_index=True)
 
     # Variables clínicas: frecuencia entre pacientes
     col1, col2 = st.columns(2)
@@ -792,7 +792,7 @@ elif modulo == "Resumen HCs":
         for v in c["variables_clinicas_presentes"]:
             det_filas.append({"Paciente": c["codigo_paciente"], "Variable": ETIQ_VARS2.get(v, v.replace("_", " ").capitalize())})
     if det_filas:
-        st.dataframe(pd.DataFrame(det_filas), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(det_filas), width='stretch', hide_index=True)
 
     # Descarga JSON para el director
     st.subheader("Exportar reporte ejecutivo")
@@ -952,7 +952,7 @@ elif modulo == "Auditoría":
             "Alertas": " | ".join(alertas) if alertas else "—",
         })
     if filas_sem:
-        st.dataframe(pd.DataFrame(filas_sem), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(filas_sem), width='stretch', hide_index=True)
 
     # --- Alertas metodológicas calibradas ---
     alertas_globales = []
