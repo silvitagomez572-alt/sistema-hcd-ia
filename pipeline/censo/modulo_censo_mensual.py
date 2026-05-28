@@ -78,14 +78,38 @@ def deduplicar_cama_dia(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _leer_csv(ruta: pathlib.Path) -> pd.DataFrame:
-    for sep in (",", ";", "\t"):
+    # Detectar encoding: VADIGU exporta ASCII, UTF-8 o ISO-8859-1 según el entorno
+    contenido = None
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
         try:
-            df = pd.read_csv(ruta, sep=sep, dtype=str, encoding="utf-8")
+            contenido = ruta.read_text(encoding=enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if contenido is None:
+        contenido = ruta.read_text(encoding="latin-1", errors="replace")
+
+    # Saltar bloque de metadata (Hospital/Servicio/Fecha) hasta encontrar la cabecera real
+    # VADIGU a veces exporta 3-4 líneas de encabezado antes de la tabla de camas
+    lineas = contenido.splitlines()
+    skiprows = 0
+    for i, linea in enumerate(lineas):
+        limpia = linea.lower().replace('"', "").replace("'", "")
+        if "cama" in limpia and "estado" in limpia:
+            skiprows = i
+            break
+
+    # Probar separadores sobre el contenido ya decodificado
+    for sep in (";", ",", "\t"):
+        try:
+            df = pd.read_csv(io.StringIO(contenido), sep=sep, dtype=str,
+                             skiprows=range(skiprows))
             if len(df.columns) >= 5:
                 return df
         except Exception:
             continue
-    return pd.read_csv(ruta, dtype=str, encoding="latin-1")
+
+    raise ValueError(f"No se pudo parsear {ruta.name}: separador no detectado o archivo malformado")
 
 
 def _leer_excel(ruta: pathlib.Path) -> pd.DataFrame:
