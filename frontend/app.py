@@ -191,6 +191,8 @@ if modulo == "📋 Censo Mensual":
                     .properties(height=260)
                 )
                 st.altair_chart(_ch, use_container_width=True)
+            else:
+                st.info("Cargá al menos 2 censos para ver el gráfico de evolución.")
 
     with tab_pendientes:
         st.subheader("HCs pendientes de procesamiento")
