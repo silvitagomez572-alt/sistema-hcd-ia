@@ -8,6 +8,7 @@ st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
 modulo = st.sidebar.radio("Modulo", [
     "📋 Censo Mensual",
+    "📊 Internaciones SM",
     "Ingresar HC",
     "OCR",
     "Pseudonimizacion",
@@ -1056,6 +1057,123 @@ elif modulo == "Auditoría":
         "No son criterios: psiquiatría=0, enfermería dominante, HC corta con tasa alta "
         "(son patrones estructurales del formato VADIGU)."
     )
+
+elif modulo == "📊 Internaciones SM":
+    import sys as _sys_int
+    import pathlib as _pl_int
+    _sys_int.path.insert(0, str(_pl_int.Path(__file__).resolve().parent.parent))
+
+    st.title("📊 Internaciones — Salud Mental")
+    st.caption("Análisis mensual de episodios de internación a partir de los censos diarios VADIGU.")
+
+    tab_ind, tab_eps, tab_rei = st.tabs(
+        ["📈 Indicadores", "🗂️ Episodios", "🔁 Reingresos"]
+    )
+
+    with st.sidebar:
+        st.divider()
+        st.subheader("Procesar mes")
+        _int_directorio = st.text_input(
+            "Directorio CSV",
+            value="~/censo mayo/",
+            key="int_dir",
+            help="Ruta al directorio con los CSV de censo del mes.",
+        )
+        _int_periodo = st.text_input(
+            "Período (YYYY-MM)",
+            value="2026-05",
+            key="int_periodo",
+        )
+        if st.button("Procesar", key="int_procesar_btn"):
+            with st.spinner("Procesando CSVs…"):
+                try:
+                    _r = requests.post(
+                        f"{API}/internaciones/procesar",
+                        json={"directorio": _int_directorio, "periodo": _int_periodo},
+                        timeout=120,
+                    )
+                    if _r.status_code == 200:
+                        _res = _r.json()
+                        _adv = _res.get("advertencias", [])
+                        if _adv:
+                            for _a in _adv:
+                                st.warning(_a)
+                        else:
+                            st.success(
+                                f"Procesado: {_res['indicadores'].get('archivos_csv_procesados', '?')} archivos · "
+                                f"{_res['indicadores'].get('total_ingresos', '?')} episodios"
+                            )
+                        st.rerun()
+                    else:
+                        st.error(f"Error {_r.status_code}: {_r.text[:200]}")
+                except Exception as _e:
+                    st.error(f"Error de conexión: {_e}")
+
+    _periodo_q = st.session_state.get("int_periodo", "2026-05")
+
+    with tab_ind:
+        st.subheader(f"Indicadores del período {_periodo_q}")
+        try:
+            _ri = requests.get(f"{API}/internaciones/indicadores/{_periodo_q}", timeout=10)
+            if _ri.status_code == 200:
+                _ind = _ri.json()
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Total ingresos",     _ind.get("total_ingresos", "—"))
+                c2.metric("Total egresos",      _ind.get("total_egresos", "—"))
+                c3.metric("Pacientes únicos",   _ind.get("pacientes_unicos", "—"))
+                c4.metric("Pacientes recurrentes", _ind.get("pacientes_recurrentes", "—"))
+                c5, c6, c7, c8 = st.columns(4)
+                c5.metric("Reingresos ≤30 días",  _ind.get("total_reingresos_30d", "—"))
+                c6.metric("% Reingresos",         f"{_ind.get('porcentaje_reingresos', 0):.1f}%")
+                c7.metric("Estancia promedio",    f"{_ind.get('estancia_promedio_dias', 0):.1f} días")
+                c8.metric("Internaciones activas", _ind.get("internaciones_activas", "—"))
+                st.caption(
+                    f"Archivos CSV procesados: {_ind.get('archivos_csv_procesados', '—')} · "
+                    f"Días-cama utilizados: {_ind.get('dias_cama_utilizados', '—')} · "
+                    f"Generado: {str(_ind.get('generado_en', ''))[:19]}"
+                )
+            elif _ri.status_code == 404:
+                st.info(f"No hay indicadores para el período {_periodo_q}. Procesá el mes en el panel lateral.")
+            else:
+                st.error(f"Error API: {_ri.status_code}")
+        except Exception as _e:
+            st.error(f"Error de conexión: {_e}")
+
+    with tab_eps:
+        st.subheader(f"Episodios — {_periodo_q}")
+        try:
+            _re = requests.get(f"{API}/internaciones/episodios/{_periodo_q}", timeout=10)
+            if _re.status_code == 200:
+                _eps = _re.json()
+                if _eps:
+                    _df_eps = pd.DataFrame(_eps)
+                    _bool_cols = [c for c in ("activo", "reingreso") if c in _df_eps.columns]
+                    for _bc in _bool_cols:
+                        _df_eps[_bc] = _df_eps[_bc].map(lambda v: "✅" if v else "—")
+                    st.dataframe(_df_eps, width='stretch', hide_index=True)
+                    st.caption(f"{len(_eps)} episodio(s). id_episodio = hash SHA-256[:12] del DNI + fecha ingreso.")
+                else:
+                    st.info("No hay episodios registrados para este período.")
+            else:
+                st.error(f"Error API: {_re.status_code}")
+        except Exception as _e:
+            st.error(f"Error de conexión: {_e}")
+
+    with tab_rei:
+        st.subheader(f"Reingresos ≤ 30 días — {_periodo_q}")
+        try:
+            _rr = requests.get(f"{API}/internaciones/reingresos/{_periodo_q}", timeout=10)
+            if _rr.status_code == 200:
+                _rein = _rr.json()
+                if _rein:
+                    st.dataframe(pd.DataFrame(_rein), width='stretch', hide_index=True)
+                    st.caption(f"{len(_rein)} reingreso(s) detectado(s) dentro de los 30 días posteriores al egreso previo.")
+                else:
+                    st.success("No se detectaron reingresos dentro de los 30 días en este período.")
+            else:
+                st.error(f"Error API: {_rr.status_code}")
+        except Exception as _e:
+            st.error(f"Error de conexión: {_e}")
 
 elif modulo == "Informe":
     st.title("Informe Final - JSON")
