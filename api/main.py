@@ -189,6 +189,46 @@ def init_db():
         texto_extraido TEXT,
         fecha TEXT
     )""")
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS internaciones_episodios (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_episodio    TEXT    NOT NULL,
+            documento      TEXT    NOT NULL,
+            codigo_hc      TEXT,
+            paciente       TEXT,
+            cama           TEXT,
+            tipo_cama      TEXT,
+            fecha_ingreso  TEXT,
+            fecha_egreso   TEXT,
+            estada_dias    INTEGER,
+            activo         INTEGER,
+            reingreso      INTEGER,
+            fuente_ingreso TEXT,
+            fuente_egreso  TEXT,
+            periodo        TEXT    NOT NULL,
+            procesado_en   TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_int_ep_periodo
+            ON internaciones_episodios(periodo);
+        CREATE INDEX IF NOT EXISTS idx_int_ep_doc
+            ON internaciones_episodios(documento);
+
+        CREATE TABLE IF NOT EXISTS internaciones_indicadores (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            periodo                 TEXT    UNIQUE NOT NULL,
+            total_ingresos          INTEGER,
+            total_egresos           INTEGER,
+            pacientes_unicos        INTEGER,
+            pacientes_recurrentes   INTEGER,
+            total_reingresos_30d    INTEGER,
+            porcentaje_reingresos   REAL,
+            dias_cama_utilizados    INTEGER,
+            estancia_promedio_dias  REAL,
+            internaciones_activas   INTEGER,
+            archivos_csv_procesados INTEGER,
+            generado_en             TEXT
+        );
+    """)
     con.commit()
     con.close()
 
@@ -599,6 +639,51 @@ def detectar_ics(registros):
             contar = estado in ["interconsulta_efectiva", "seguimiento"]
             result.append({"servicios": found, "estado_interconsulta": estado, "score": score, "contar": contar, "evidencia": r["texto"][:100], "texto": r["texto"][:200], "multi_evento": False})
     return result
+
+from pipeline.internaciones.modulo_internaciones import (
+    procesar_mes as _procesar_mes_int,
+    indicadores_periodo as _indicadores_periodo_int,
+    episodios_periodo as _episodios_periodo_int,
+    reingresos_periodo as _reingresos_periodo_int,
+    historico_por_hc as _historico_por_hc_int,
+)
+
+
+@app.post("/internaciones/procesar")
+async def internaciones_procesar(payload: dict):
+    directorio = payload.get("directorio", "")
+    periodo    = payload.get("periodo", "")
+    if not directorio or not periodo:
+        raise HTTPException(status_code=400, detail="Se requieren 'directorio' y 'periodo'")
+    try:
+        resultado = _procesar_mes_int(directorio, periodo)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return resultado
+
+
+@app.get("/internaciones/indicadores/{periodo}")
+def internaciones_indicadores(periodo: str):
+    datos = _indicadores_periodo_int(periodo)
+    if datos is None:
+        raise HTTPException(status_code=404, detail=f"No hay indicadores para el período {periodo}")
+    return datos
+
+
+@app.get("/internaciones/episodios/{periodo}")
+def internaciones_episodios(periodo: str):
+    return _episodios_periodo_int(periodo)
+
+
+@app.get("/internaciones/reingresos/{periodo}")
+def internaciones_reingresos(periodo: str):
+    return _reingresos_periodo_int(periodo)
+
+
+@app.get("/internaciones/historico/{codigo_hc}")
+def internaciones_historico(codigo_hc: str):
+    return _historico_por_hc_int(codigo_hc)
+
 
 @app.post("/hcd/procesar-modelo")
 async def procesar_con_modelo(archivo: UploadFile = File(...)):
