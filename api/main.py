@@ -789,6 +789,115 @@ def internaciones_historico(codigo_hc: str):
     return sanitize_public_payload(_historico_por_hc_int(codigo_hc))
 
 
+# ── Censo upload (móvil / FastAPI directo) ────────────────────────────────────
+
+import tempfile as _tempfile
+from pipeline.censo.modulo_censo_mensual import leer_archivo_censo as _leer_archivo_censo
+
+_CENSO_ALLOWED_EXTS  = {".pdf", ".csv", ".xls", ".xlsx", ".html", ".htm"}
+_CENSO_MAX_BYTES     = 200 * 1024 * 1024   # 200 MB
+_CENSO_PRIV_COLS     = {"paciente", "documento", "nombre", "dni"}   # never returned
+
+
+def _validar_censo_fastapi(filename: str, content_type: str, data: bytes):
+    """Returns (ext: str, errores: list[str])."""
+    ext  = pathlib.Path(filename).suffix.lower() if filename else ""
+    head = (data or b"")[:16].lstrip()
+    ct   = (content_type or "").lower()
+
+    if ext not in _CENSO_ALLOWED_EXTS:
+        if head.startswith(b"%PDF"):
+            ext = ".pdf"
+        elif head.startswith(b"PK"):
+            ext = ".xlsx"
+        elif head.startswith(b"\xd0\xcf\x11\xe0"):
+            ext = ".xls"
+        elif head.lower().startswith((b"<!doctype html", b"<html", b"<table")):
+            ext = ".html"
+        elif ct in ("text/csv", "text/plain"):
+            ext = ".csv"
+        elif ct == "application/pdf":
+            ext = ".pdf"
+        elif ct in ("text/html", "application/xhtml+xml"):
+            ext = ".html"
+        elif ct == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+            ext = ".xlsx"
+        elif ct == "application/vnd.ms-excel":
+            ext = ".xls"
+
+    errores: list[str] = []
+
+    if ext not in _CENSO_ALLOWED_EXTS:
+        errores.append(
+            f"Formato no compatible: '{ext or '(sin extensión)'}'. "
+            "Se aceptan PDF, CSV, XLS, XLSX, HTML, HTM."
+        )
+    if not data:
+        errores.append("El archivo está vacío.")
+    elif len(data) > _CENSO_MAX_BYTES:
+        errores.append(
+            f"El archivo supera el límite: {len(data)/(1024*1024):.1f} MB (máx 200 MB)."
+        )
+    if ext == ".pdf" and data and not data.startswith(b"%PDF"):
+        errores.append("El archivo tiene extensión .pdf pero no contiene encabezado PDF válido (%PDF).")
+
+    return ext, errores
+
+
+@app.post("/censos/upload")
+async def censos_upload(archivo: UploadFile = File(...)):
+    data     = await archivo.read()
+    filename = archivo.filename or ""
+    ct       = archivo.content_type or ""
+
+    ext, errores = _validar_censo_fastapi(filename, ct, data)
+    if errores:
+        raise HTTPException(status_code=400, detail=" | ".join(errores))
+
+    ts          = dt_module.datetime.now(AR_TZ).strftime("%Y%m%d_%H%M%S")
+    safe_name   = f"censo_{ts}{ext}"
+
+    try:
+        with _tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = pathlib.Path(tmp.name)
+
+        try:
+            df = _leer_archivo_censo(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        cols_all = list(df.columns)
+        cols_pub = [c for c in cols_all
+                    if c.lower() not in _CENSO_PRIV_COLS]
+
+        filas_sm = None
+        if "Area" in df.columns:
+            sm_mask  = df["Area"].map(
+                lambda v: re.sub(r'\s+', ' ', str(v)).strip().lower()
+            ) == "salud mental"
+            filas_sm = int(sm_mask.sum())
+
+        return {
+            "ok":                True,
+            "filename_publico":  safe_name,
+            "filas_detectadas":  len(df),
+            "filas_salud_mental": filas_sm,
+            "columnas_detectadas": cols_pub,
+            "error":             None,
+        }
+
+    except Exception as exc:
+        return {
+            "ok":                False,
+            "filename_publico":  safe_name,
+            "filas_detectadas":  None,
+            "filas_salud_mental": None,
+            "columnas_detectadas": None,
+            "error":             str(exc),
+        }
+
+
 @app.post("/hcd/procesar-modelo")
 async def procesar_con_modelo(archivo: UploadFile = File(...)):
     contenido = await archivo.read()

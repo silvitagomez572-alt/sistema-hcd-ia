@@ -183,6 +183,53 @@ if modulo == "📋 Censo Mensual":
             else:
                 st.warning("No se encontraron filas con Estado=Ocupada y Area=Salud Mental.")
 
+        st.divider()
+        st.subheader("📱 Subida móvil alternativa vía FastAPI")
+        st.caption(
+            "Si el botón de carga principal falla desde celular, usá esta opción. "
+            "El archivo se sube directamente al servidor por HTTP sin pasar por el componente de Streamlit."
+        )
+        _API_MOBILE = "http://192.168.100.44:8001"
+        _mob_arch = st.file_uploader(
+            "Seleccionar archivo censo (subida directa a FastAPI)",
+            type=["pdf", "csv", "xls", "xlsx", "html", "htm",
+                  "application/pdf", "text/csv",
+                  "application/vnd.ms-excel",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  "text/html", "application/octet-stream"],
+            key="censo_mobile_uploader",
+        )
+        if _mob_arch and st.button("Subir vía FastAPI", key="censo_mobile_btn"):
+            with st.spinner("Subiendo al servidor..."):
+                try:
+                    _mob_r = requests.post(
+                        f"{_API_MOBILE}/censos/upload",
+                        files={"archivo": (
+                            _mob_arch.name,
+                            _mob_arch.getvalue(),
+                            _mob_arch.type or "application/octet-stream",
+                        )},
+                        timeout=60,
+                    )
+                    if _mob_r.status_code == 200:
+                        _mob_res = _mob_r.json()
+                        if _mob_res.get("ok"):
+                            st.success(
+                                f"Archivo recibido: **{_mob_res['filename_publico']}** — "
+                                f"{_mob_res['filas_detectadas']} filas totales"
+                                + (f", {_mob_res['filas_salud_mental']} filas Salud Mental"
+                                   if _mob_res.get('filas_salud_mental') is not None else "")
+                            )
+                            st.json({k: v for k, v in _mob_res.items() if k != "error"})
+                        else:
+                            st.error(f"El servidor rechazó el archivo: {_mob_res.get('error', 'error desconocido')}")
+                    elif _mob_r.status_code == 400:
+                        st.error(f"Validación: {_mob_r.json().get('detail', _mob_r.text[:200])}")
+                    else:
+                        st.error(f"Error HTTP {_mob_r.status_code}: {_mob_r.text[:200]}")
+                except Exception as _mob_e:
+                    st.error(f"Error de conexión con {_API_MOBILE}: {_mob_e}")
+
         if st.session_state["censo_raw_stats"] is not None:
             _df_st = st.session_state["censo_raw_stats"]
             _df_cons2 = st.session_state["censo_df"]
