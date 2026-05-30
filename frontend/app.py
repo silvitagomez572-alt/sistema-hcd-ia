@@ -122,6 +122,7 @@ if modulo == "📋 Censo Mensual":
         st.subheader("Cargar archivos de censo VADIGU")
         archivos_cargados = st.file_uploader(
             "Seleccionar uno o varios archivos del mes",
+            type=["pdf", "csv", "xls", "xlsx", "html", "htm"],
             accept_multiple_files=True,
             key="censo_uploader",
         )
