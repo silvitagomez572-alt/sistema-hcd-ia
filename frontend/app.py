@@ -127,8 +127,43 @@ if modulo == "📋 Censo Mensual":
             key="censo_uploader",
         )
 
+        # ── DEBUG TEMPORAL ────────────────────────────────────────────────────────
+        if archivos_cargados:
+            import traceback as _tb
+            with st.expander("🔍 DEBUG — info de archivos recibidos", expanded=True):
+                for _di, _da in enumerate(archivos_cargados, start=1):
+                    try:
+                        _db = _da.getvalue()
+                        _dhex = _db[:20].hex() if _db else "(vacío)"
+                        _dext = _inferir_extension_censo(
+                            str(getattr(_da, "name", "") or ""),
+                            str(getattr(_da, "type", "") or ""),
+                            _db,
+                        )
+                        _dval = _validar_archivo_censo(_da)
+                        st.code(
+                            f"[archivo {_di}]\n"
+                            f"  name : {getattr(_da, 'name', '(sin nombre)')!r}\n"
+                            f"  type : {getattr(_da, 'type', '(sin mime)')!r}\n"
+                            f"  size : {getattr(_da, 'size', len(_db) if _db else 0)} bytes\n"
+                            f"  hex20: {_dhex}\n"
+                            f"  _inferir_extension_censo → {_dext!r}\n"
+                            f"  _validar_archivo_censo →\n"
+                            f"    nombre_seguro : {_dval[0]!r}\n"
+                            f"    ext           : {_dval[1]!r}\n"
+                            f"    mime          : {_dval[2]!r}\n"
+                            f"    errores       : {_dval[4]}\n"
+                            f"    avisos        : {_dval[5]}",
+                            language="text",
+                        )
+                    except Exception as _de:
+                        st.error(f"[archivo {_di}] excepción en debug: {_de}")
+                        st.code(_tb.format_exc(), language="text")
+        # ── FIN DEBUG ─────────────────────────────────────────────────────────────
+
         if archivos_cargados and st.button("Consolidar mes", key="censo_btn"):
             import tempfile
+            import traceback as _tb2
             fragmentos, stats_lista, errores, avisos = [], [], [], []
             with tempfile.TemporaryDirectory() as _tmpdir:
                 for _idx, _arch in enumerate(archivos_cargados, start=1):
@@ -158,6 +193,9 @@ if modulo == "📋 Censo Mensual":
                         if _ext == ".pdf":
                             _msg = f"{_msg} Si el PDF es escaneado o imagen, el censo todavía no usa OCR; cargá una exportación CSV, XLS, XLSX o HTML."
                         errores.append((_nombre_publico, _msg))
+                        # DEBUG: stacktrace completo visible en pantalla
+                        st.error(f"STACKTRACE [{_nombre_publico}]")
+                        st.code(_tb2.format_exc(), language="text")
 
             for _nombre, _msg in avisos:
                 st.info(f"{_nombre}: {_msg}")
