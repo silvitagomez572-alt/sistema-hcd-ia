@@ -177,6 +177,25 @@ def _codigo_paciente(row_id, archivo, resumen=None, texto_extraido=""):
 def _archivo_publico(nombre_archivo):
     return pseudonymize_identifier(nombre_archivo, prefix="DOC")
 
+
+def _normalizar_busqueda(valor):
+    return re.sub(r"[^a-z0-9]", "", str(valor or "").lower())
+
+
+def _coincide_identificador(consulta, *campos):
+    consulta_txt = str(consulta or "").strip().lower()
+    consulta_norm = _normalizar_busqueda(consulta)
+    if not consulta_txt and not consulta_norm:
+        return False
+    for campo in campos:
+        campo_txt = str(campo or "").lower()
+        campo_norm = _normalizar_busqueda(campo)
+        if consulta_txt and consulta_txt in campo_txt:
+            return True
+        if consulta_norm and consulta_norm in campo_norm:
+            return True
+    return False
+
 @app.post("/hcd/procesar")
 async def procesar_hc(archivo: UploadFile = File(...)):
     contenido = await archivo.read()
@@ -290,6 +309,36 @@ def get_reportes():
             "codigo_paciente": _codigo_paciente(r[0], r[1], resumen, r[3]),
         })
     return result
+
+
+@app.post("/hcd/buscar-interno")
+def buscar_hc_interno(payload: dict):
+    """
+    Lookup operativo: acepta DNI/nombre/codigoHC/archivo para matching interno,
+    pero nunca devuelve esos identificadores crudos.
+    """
+    consulta = payload.get("q") or payload.get("identificador") or payload.get("codigo_hc") or payload.get("dni") or payload.get("nombre")
+    if not str(consulta or "").strip():
+        return {"encontrado": False}
+
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute(
+        "SELECT id, archivo, resumen, texto_extraido, fecha FROM hcs_procesadas ORDER BY fecha DESC"
+    ).fetchall()
+    con.close()
+
+    for r in rows:
+        if not _coincide_identificador(consulta, r[1], r[2], r[3]):
+            continue
+        resumen = _loads_public_summary(r[2])
+        return {
+            "encontrado": True,
+            "codigo_paciente": _codigo_paciente(r[0], r[1], resumen, r[3]),
+            "id": r[0],
+            "fecha": r[4],
+        }
+
+    return {"encontrado": False}
 
 @app.get("/hcd/reporte-total")
 def reporte_total():

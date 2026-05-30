@@ -259,22 +259,31 @@ if modulo == "📋 Censo Mensual":
         elif "codigoHC" not in _df_censo.columns:
             st.warning("Los archivos cargados no contienen la columna 'codigoHC'.")
         else:
-            try:
-                _r_proc = requests.get(f"{API}/hcd/reportes", timeout=10)
-                _procesadas = set()
-                if _r_proc.status_code == 200:
-                    for _rep in _r_proc.json():
-                        _procesadas.add(_rep.get("archivo", "").lower())
-                        _procesadas.add(_rep.get("codigo_paciente", "").lower())
-            except Exception:
-                _procesadas = set()
-
             _filas = []
             for _, _pac_row in _df_censo.iterrows():
                 _cod = str(_pac_row.get("codigoHC", "")).strip()
-                _ya_proc = any(_cod.lower() in _p for _p in _procesadas)
+                _identificadores_busqueda = [
+                    _cod,
+                    str(_pac_row.get("Documento", "")).strip(),
+                    str(_pac_row.get("Paciente", "")).strip(),
+                ]
+                _ya_proc = False
+                _pac_publico = _id_paciente_censo(_pac_row)
+                for _q in [v for v in _identificadores_busqueda if v]:
+                    try:
+                        _r_lookup = requests.post(
+                            f"{API}/hcd/buscar-interno",
+                            json={"q": _q},
+                            timeout=5,
+                        )
+                        if _r_lookup.status_code == 200 and _r_lookup.json().get("encontrado"):
+                            _ya_proc = True
+                            _pac_publico = _r_lookup.json().get("codigo_paciente") or _pac_publico
+                            break
+                    except Exception:
+                        continue
                 _filas.append({
-                    "paciente_id": _id_paciente_censo(_pac_row),
+                    "paciente_id": _pac_publico,
                     "Estado": "✅ Procesado" if _ya_proc else "⏳ Pendiente",
                 })
 
