@@ -55,12 +55,38 @@ if modulo == "📋 Censo Mensual":
         ".htm": {"text/html", "application/xhtml+xml", "text/plain", "application/octet-stream", ""},
     }
 
+    def _inferir_extension_censo(_nombre, _mime, _bytes):
+        _ext = _pl.Path(_nombre).suffix.lower()
+        if _ext in _EXTS_CENSO:
+            return _ext
+        _mime = str(_mime or "").lower()
+        _head = (_bytes or b"")[:16].lstrip()
+        if _head.startswith(b"%PDF"):
+            return ".pdf"
+        if _head.startswith(b"PK"):
+            return ".xlsx"
+        if _head.startswith(b"\xd0\xcf\x11\xe0"):
+            return ".xls"
+        if _head.lower().startswith((b"<!doctype html", b"<html", b"<table")):
+            return ".html"
+        if _mime in {"application/pdf"}:
+            return ".pdf"
+        if _mime in {"text/csv", "text/plain"}:
+            return ".csv"
+        if _mime in {"text/html", "application/xhtml+xml"}:
+            return ".html"
+        if _mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+            return ".xlsx"
+        if _mime == "application/vnd.ms-excel":
+            return ".xls"
+        return _ext
+
     def _validar_archivo_censo(_archivo):
         _nombre_original = str(getattr(_archivo, "name", "") or "").strip()
         _nombre_seguro = _pl.Path(_nombre_original).name
-        _ext = _pl.Path(_nombre_seguro).suffix.lower()
         _mime = str(getattr(_archivo, "type", "") or "")
         _bytes = _archivo.getvalue()
+        _ext = _inferir_extension_censo(_nombre_seguro, _mime, _bytes)
         _errores = []
         _avisos = []
 
@@ -96,7 +122,6 @@ if modulo == "📋 Censo Mensual":
         st.subheader("Cargar archivos de censo VADIGU")
         archivos_cargados = st.file_uploader(
             "Seleccionar uno o varios archivos del mes",
-            type=["csv", "xlsx", "xls", "html", "htm", "pdf"],
             accept_multiple_files=True,
             key="censo_uploader",
         )
