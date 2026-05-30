@@ -28,6 +28,7 @@ if modulo == "📋 Censo Mensual":
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
     try:
         from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, filtrar_salud_mental, stats_servicio_sm, TOTAL_CAMAS_FIJAS
+        from pipeline.pseudonimizacion import generar_paciente_id
         _censo_ok = True
     except ImportError as _e:
         _censo_ok = False
@@ -42,6 +43,50 @@ if modulo == "📋 Censo Mensual":
     for _k in ("censo_df", "censo_raw_stats"):
         if _k not in st.session_state:
             st.session_state[_k] = None
+
+    _EXTS_CENSO = {".pdf", ".csv", ".xls", ".xlsx", ".html", ".htm"}
+    _MAX_CENSO_BYTES = 200 * 1024 * 1024
+    _MIME_COMPATIBLES = {
+        ".pdf": {"application/pdf", "application/octet-stream", ""},
+        ".csv": {"text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream", ""},
+        ".xls": {"application/vnd.ms-excel", "application/octet-stream", ""},
+        ".xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream", ""},
+        ".html": {"text/html", "application/xhtml+xml", "text/plain", "application/octet-stream", ""},
+        ".htm": {"text/html", "application/xhtml+xml", "text/plain", "application/octet-stream", ""},
+    }
+
+    def _validar_archivo_censo(_archivo):
+        _nombre_original = str(getattr(_archivo, "name", "") or "").strip()
+        _nombre_seguro = _pl.Path(_nombre_original).name
+        _ext = _pl.Path(_nombre_seguro).suffix.lower()
+        _mime = str(getattr(_archivo, "type", "") or "")
+        _bytes = _archivo.getvalue()
+        _errores = []
+        _avisos = []
+
+        if not _nombre_seguro:
+            _errores.append("El archivo no informa un nombre válido.")
+        if _ext not in _EXTS_CENSO:
+            _errores.append("Formato no compatible. Usá PDF, CSV, XLS, XLSX, HTML o HTM.")
+        if not _bytes:
+            _errores.append("El archivo está vacío o no se subió correctamente.")
+        elif len(_bytes) > _MAX_CENSO_BYTES:
+            _errores.append("El archivo supera el tamaño máximo admitido para censos (200 MB).")
+        if _ext == ".pdf" and _bytes and not _bytes.startswith(b"%PDF"):
+            _errores.append("El archivo tiene extensión PDF, pero no contiene un encabezado PDF válido.")
+        if _ext in _MIME_COMPATIBLES and _mime not in _MIME_COMPATIBLES[_ext]:
+            _avisos.append(f"Tipo MIME informado por el navegador: {_mime or 'sin tipo'}. Se validará por extensión y contenido.")
+
+        return _nombre_seguro, _ext, _mime, _bytes, _errores, _avisos
+
+    def _id_paciente_censo(_fila):
+        _base = (
+            _fila.get("Documento")
+            or _fila.get("codigoHC")
+            or _fila.get("Paciente")
+            or ""
+        )
+        return generar_paciente_id(str(_base))
 
     tab_carga, tab_stats, tab_pendientes = st.tabs(
         ["📥 Cargar Censos", "📊 Estadísticas", "⏳ Pendientes"]
@@ -58,11 +103,18 @@ if modulo == "📋 Censo Mensual":
 
         if archivos_cargados and st.button("Consolidar mes", key="censo_btn"):
             import tempfile
-            fragmentos, stats_lista, errores = [], [], []
+            fragmentos, stats_lista, errores, avisos = [], [], [], []
             with tempfile.TemporaryDirectory() as _tmpdir:
-                for _arch in archivos_cargados:
-                    _ruta_tmp = _pl.Path(_tmpdir) / _arch.name
-                    _ruta_tmp.write_bytes(_arch.getvalue())
+                for _idx, _arch in enumerate(archivos_cargados, start=1):
+                    _nombre_seguro, _ext, _mime, _bytes, _errores_val, _avisos_val = _validar_archivo_censo(_arch)
+                    _nombre_publico = f"archivo_{_idx:03d}{_ext or '.dat'}"
+                    for _aviso in _avisos_val:
+                        avisos.append((_nombre_publico, _aviso))
+                    if _errores_val:
+                        errores.append((_nombre_publico, " ".join(_errores_val)))
+                        continue
+                    _ruta_tmp = _pl.Path(_tmpdir) / _nombre_publico
+                    _ruta_tmp.write_bytes(_bytes)
                     try:
                         _df_raw = leer_archivo_censo(_ruta_tmp)
                         _svc = stats_servicio_sm(_df_raw)
@@ -70,14 +122,19 @@ if modulo == "📋 Censo Mensual":
                         _lib = _svc["libres_fijas"]
                         _trans_ocu = _svc["transitorias_ocupadas"]
                         _df_sm = filtrar_salud_mental(_df_raw)
-                        stats_lista.append({"Archivo": _arch.name, "Total SM (18 fijas)": TOTAL_CAMAS_FIJAS, "Ocupadas": _ocu, "Libres": _lib, "Transitoria - Trasplantados": _trans_ocu})
+                        stats_lista.append({"Archivo": _nombre_publico, "Formato": _ext.replace(".", "").upper(), "Tamaño MB": round(len(_bytes) / (1024 * 1024), 2), "Total SM (18 fijas)": TOTAL_CAMAS_FIJAS, "Ocupadas": _ocu, "Libres": _lib, "Transitoria - Trasplantados": _trans_ocu})
                         if not _df_sm.empty:
                             _df_sm = _df_sm.copy()
-                            _df_sm["_archivo"] = _arch.name
+                            _df_sm["_archivo"] = _nombre_publico
                             fragmentos.append(_df_sm)
                     except Exception as _exc:
-                        errores.append((_arch.name, str(_exc)))
+                        _msg = str(_exc)
+                        if _ext == ".pdf":
+                            _msg = f"{_msg} Si el PDF es escaneado o imagen, el censo todavía no usa OCR; cargá una exportación CSV, XLS, XLSX o HTML."
+                        errores.append((_nombre_publico, _msg))
 
+            for _nombre, _msg in avisos:
+                st.info(f"{_nombre}: {_msg}")
             for _nombre, _msg in errores:
                 st.warning(f"⚠️ {_nombre}: {_msg}")
 
@@ -108,11 +165,12 @@ if modulo == "📋 Censo Mensual":
             if _df_cons2 is not None and not _df_cons2.empty:
                 st.divider()
                 st.warning("⚠️ Información de uso interno — no compartir")
-                _cols_dedup = [c for c in ["codigoHC", "Paciente", "Documento", "Ingreso", "Estada", "Area", "tipo_cama"] if c in _df_cons2.columns]
+                _cols_dedup = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "Area", "tipo_cama"] if c in _df_cons2.columns]
                 if _cols_dedup:
                     st.subheader("Pacientes internados — Salud Mental")
-                    st.caption("Consultá VADIGU para identificar el paciente por codigoHC.")
+                    st.caption("Vista pública pseudonimizada. Consultá VADIGU para identificación operativa autorizada.")
                     _df_tabla = _df_cons2[_cols_dedup].copy()
+                    _df_tabla["paciente_id"] = _df_tabla.apply(_id_paciente_censo, axis=1)
                     # Deduplicar por Documento (DNI) conservando el registro con mayor Estada.
                     # El mismo paciente puede tener dos codigoHC distintos en VADIGU.
                     if "Estada" in _df_tabla.columns:
@@ -128,15 +186,13 @@ if modulo == "📋 Censo Mensual":
                         _df_tabla["Estada"] = _df_tabla["Estada"].astype(int).astype(str)
                     if "Ingreso" in _df_tabla.columns:
                         _df_tabla["Ingreso"] = pd.to_datetime(_df_tabla["Ingreso"], errors="coerce").dt.strftime("%d/%m/%Y").fillna("")
-                    # Solo pantalla — Documento visible pero no se persiste en ningún lado
-                    _cols_visibles = [c for c in ["codigoHC", "Documento", "Ingreso", "Estada", "tipo_cama"] if c in _df_tabla.columns]
+                    _cols_visibles = [c for c in ["paciente_id", "Ingreso", "Estada", "tipo_cama"] if c in _df_tabla.columns]
                     st.dataframe(
                         _df_tabla[_cols_visibles],
                         width='stretch',
                         hide_index=True,
                         column_config={
-                            "codigoHC":  st.column_config.TextColumn("codigoHC",  width="medium"),
-                            "Documento": st.column_config.TextColumn("Documento", width="medium"),
+                            "paciente_id": st.column_config.TextColumn("ID pseudónimo", width="medium"),
                             "Ingreso":   st.column_config.TextColumn("Ingreso",   width="small"),
                             "Estada":    st.column_config.TextColumn("Estada",    width="small"),
                             "tipo_cama": st.column_config.TextColumn("Tipo cama", width="medium"),
@@ -216,11 +272,9 @@ if modulo == "📋 Censo Mensual":
             _filas = []
             for _, _pac_row in _df_censo.iterrows():
                 _cod = str(_pac_row.get("codigoHC", "")).strip()
-                _nombre = str(_pac_row.get("Paciente", "—")).strip()
                 _ya_proc = any(_cod.lower() in _p for _p in _procesadas)
                 _filas.append({
-                    "codigoHC": _cod,
-                    "Paciente": _nombre,
+                    "paciente_id": _id_paciente_censo(_pac_row),
                     "Estado": "✅ Procesado" if _ya_proc else "⏳ Pendiente",
                 })
 
@@ -260,7 +314,7 @@ elif modulo == "Ingresar HC":
     tipo = st.radio("Formato", ["HTML/TXT","PDF","Imagen OCR"])
     archivo = st.file_uploader("Archivo", type=["html","txt","pdf","png","jpg","xls","xlsx"])
     if archivo:
-        st.success(f"Cargado: {archivo.name}")
+        st.success("Archivo cargado correctamente")
         if st.button("Procesar"):
             with st.spinner("Procesando HC con IA..."):
                 try:
@@ -281,6 +335,7 @@ elif modulo == "OCR":
     _sys_ocr.path.insert(0, str(_pl_ocr.Path(__file__).resolve().parent.parent))
     try:
         from pipeline.ocr.modulo_ocr import procesar_archivo, texto_completo
+        from pipeline.pseudonimizacion import pseudonimizar_texto
         _ocr_ok = True
     except ImportError as _e:
         _ocr_ok = False
@@ -305,11 +360,14 @@ elif modulo == "OCR":
     )
 
     if archivo_ocr and st.button("Procesar con OCR", key="ocr_btn"):
-        with st.spinner(f"Extrayendo texto de {archivo_ocr.name}…"):
+        with st.spinner("Extrayendo texto del archivo..."):
             try:
                 _paginas = procesar_archivo(archivo_ocr.getvalue(), archivo_ocr.name)
-                st.session_state["ocr_paginas"] = _paginas
-                st.session_state["ocr_nombre"] = archivo_ocr.name
+                st.session_state["ocr_paginas"] = [
+                    {**_p, "texto": pseudonimizar_texto(str(_p.get("texto", "")))}
+                    for _p in _paginas
+                ]
+                st.session_state["ocr_nombre"] = "resultado_ocr"
             except Exception as _e:
                 st.error(f"Error al procesar: {_e}")
                 st.session_state["ocr_paginas"] = None
@@ -340,9 +398,9 @@ elif modulo == "OCR":
                 )
 
         st.divider()
-        _nombre_dl = _pl_ocr.Path(_nombre_base).stem + "_ocr.txt"
+        _nombre_dl = _pl_ocr.Path(_nombre_base).stem + "_redactado.txt"
         st.download_button(
-            "⬇ Descargar texto completo (.txt)",
+            "⬇ Descargar texto redactado (.txt)",
             texto_completo(_paginas),
             file_name=_nombre_dl,
             mime="text/plain",

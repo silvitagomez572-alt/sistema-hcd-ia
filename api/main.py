@@ -2,6 +2,7 @@ import json
 import os
 import pathlib
 import io
+import re
 import httpx
 import chromadb
 import pypdf
@@ -30,16 +31,16 @@ def health():
 
 @app.get("/hcd/summary")
 def hcd_summary():
-    return load_hcd()
+    return sanitize_public_payload(load_hcd())
 
 @app.get("/hcd/interconsultas")
 def hcd_interconsultas():
-    return load_hcd()["interconsultas_detectadas"]
+    return sanitize_public_payload(load_hcd()["interconsultas_detectadas"])
 
 @app.get("/hcd/metricas")
 def hcd_metricas():
     data = load_hcd()
-    return {"modelo_nlp": data["modelo_nlp"], "carga_asistencial": data["carga_asistencial"], "intervenciones_por_area": data["intervenciones_por_area"], "internacion": data["internacion"], "variables_clinicas_detectadas": data["variables_clinicas_detectadas"], "estrategia_externacion": data["estrategia_externacion"]}
+    return sanitize_public_payload({"modelo_nlp": data["modelo_nlp"], "carga_asistencial": data["carga_asistencial"], "intervenciones_por_area": data["intervenciones_por_area"], "internacion": data["internacion"], "variables_clinicas_detectadas": data["variables_clinicas_detectadas"], "estrategia_externacion": data["estrategia_externacion"]})
 
 @app.post("/llm/consultar")
 async def llm_consultar(payload: dict):
@@ -137,6 +138,44 @@ async def rag_subir(archivo: UploadFile = File(...)):
 
 from bs4 import BeautifulSoup
 import xlrd, openpyxl, io
+from pipeline.pseudonimizacion import (
+    generar_paciente_id,
+    pseudonimizar_texto,
+    pseudonymize_identifier,
+    sanitize_public_payload,
+)
+
+
+def _loads_public_summary(resumen_raw):
+    try:
+        return sanitize_public_payload(json.loads(resumen_raw))
+    except Exception:
+        return {"resumen": pseudonimizar_texto(resumen_raw)}
+
+
+def _public_summary_json(resumen_raw):
+    return json.dumps(_loads_public_summary(resumen_raw), ensure_ascii=False)
+
+
+def _best_patient_identifier(row_id, archivo, resumen=None, texto_extraido=""):
+    resumen = resumen if isinstance(resumen, dict) else {}
+    paciente = resumen.get("paciente", {})
+    if isinstance(paciente, dict) and paciente.get("paciente_id"):
+        return paciente["paciente_id"]
+    combined = " ".join(str(x or "") for x in (texto_extraido, archivo))
+    for pattern in (r"\b\d{1,5}-\d{6,9}-\d{1,3}\b", r"\b\d{7,8}\b"):
+        match = re.search(pattern, combined)
+        if match:
+            return match.group(0)
+    return archivo or f"ROW-{row_id}"
+
+
+def _codigo_paciente(row_id, archivo, resumen=None, texto_extraido=""):
+    return generar_paciente_id(_best_patient_identifier(row_id, archivo, resumen, texto_extraido))
+
+
+def _archivo_publico(nombre_archivo):
+    return pseudonymize_identifier(nombre_archivo, prefix="DOC")
 
 @app.post("/hcd/procesar")
 async def procesar_hc(archivo: UploadFile = File(...)):
@@ -158,23 +197,24 @@ async def procesar_hc(archivo: UploadFile = File(...)):
     else:
         soup = BeautifulSoup(contenido, "html.parser")
         texto = soup.get_text(separator=" ", strip=True)[:2000]
-    prompt = f"""Eres un asistente clinico hospitalario. Analiza esta historia clinica y extrae en espanol:
-1. Datos del paciente (nombre si aparece, edad, servicio)
+    texto_publico = pseudonimizar_texto(texto)
+    prompt = f"""Eres un asistente clinico hospitalario. Analiza esta historia clinica pseudonimizada y extrae en espanol:
+1. Datos clinicos generales disponibles (edad si aparece, servicio)
 2. Principales intervenciones detectadas
 3. Areas involucradas
 4. Variables clinicas relevantes
-Historia clinica: {texto}
+Historia clinica: {texto_publico}
 Responde de forma estructurada y breve."""
     async with httpx.AsyncClient(timeout=300) as client:
         r = await client.post(f"{OLLAMA_URL}/api/generate", json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False})
         data = r.json()
-        resumen = data.get("response", "")
+        resumen = pseudonimizar_texto(data.get("response", ""))
         con = sqlite3.connect(DB_PATH)
         con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
-            (archivo.filename, resumen, texto[:500], datetime.datetime.now().isoformat()))
+            (archivo.filename, resumen, texto_publico[:500], datetime.datetime.now().isoformat()))
         con.commit()
         con.close()
-        return {"archivo": archivo.filename, "resumen": resumen}
+        return {"archivo": _archivo_publico(archivo.filename), "resumen": resumen}
 
 import sqlite3, datetime
 
@@ -237,17 +277,26 @@ init_db()
 @app.get("/hcd/reportes")
 def get_reportes():
     con = sqlite3.connect(DB_PATH)
-    rows = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas ORDER BY fecha DESC").fetchall()
+    rows = con.execute("SELECT id, archivo, resumen, texto_extraido, fecha FROM hcs_procesadas ORDER BY fecha DESC").fetchall()
     con.close()
-    return [{"id": r[0], "archivo": r[1], "resumen": r[2], "fecha": r[3],
-             "codigo_paciente": f"PAC-{r[0]:03d}"} for r in rows]
+    result = []
+    for r in rows:
+        resumen = _loads_public_summary(r[2])
+        result.append({
+            "id": r[0],
+            "archivo": _archivo_publico(r[1]),
+            "resumen": json.dumps(resumen, ensure_ascii=False),
+            "fecha": r[4],
+            "codigo_paciente": _codigo_paciente(r[0], r[1], resumen, r[3]),
+        })
+    return result
 
 @app.get("/hcd/reporte-total")
 def reporte_total():
     con = sqlite3.connect(DB_PATH)
     # Deduplicar: mantener el registro más reciente por archivo
     rows = con.execute(
-        "SELECT id, archivo, resumen, fecha FROM hcs_procesadas "
+        "SELECT id, archivo, resumen, fecha, texto_extraido FROM hcs_procesadas "
         "WHERE id IN (SELECT MAX(id) FROM hcs_procesadas GROUP BY archivo) "
         "ORDER BY id"
     ).fetchall()
@@ -262,7 +311,7 @@ def reporte_total():
             d = json.loads(r[2])
         except:
             continue
-        codigo = f"PAC-{r[0]:03d}"
+        codigo = _codigo_paciente(r[0], r[1], d, r[4])
         total_pac = d.get("total_intervenciones", 0)
         intern = d.get("internacion", {})
         dias = intern.get("dias_totales", 0)
@@ -297,7 +346,7 @@ def reporte_total():
         vars_presentes = [k for k, v in vars_c.items() if v]
         casos.append({
             "codigo_paciente": codigo,
-            "archivo": r[1],
+            "archivo": _archivo_publico(r[1]),
             "fecha_procesamiento": r[3][:10],
             "total_intervenciones": total_pac,
             "dias_internacion": dias,
@@ -310,7 +359,7 @@ def reporte_total():
         })
 
     n = len(casos)
-    return {
+    return sanitize_public_payload({
         "resumen_ejecutivo": {
             "total_pacientes": n,
             "total_intervenciones": total_intervenciones,
@@ -322,7 +371,7 @@ def reporte_total():
         "variables_clinicas_por_frecuencia": dict(sorted(vars_global.items(), key=lambda x: -x[1])),
         "interconsultas_por_estado": ics_por_estado,
         "casos": casos,
-    }
+    })
 
 @app.delete("/hcd/reportes/duplicados")
 def limpiar_duplicados():
@@ -348,15 +397,18 @@ def limpiar_reportes():
 @app.get("/hcd/reportes/{id}/json")
 def reporte_json(id: int):
     con = sqlite3.connect(DB_PATH)
-    row = con.execute("SELECT id, archivo, resumen, fecha FROM hcs_procesadas WHERE id = ?", (id,)).fetchone()
+    row = con.execute("SELECT id, archivo, resumen, fecha, texto_extraido FROM hcs_procesadas WHERE id = ?", (id,)).fetchone()
     con.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
-    try:
-        resumen = json.loads(row[2])
-    except Exception:
-        resumen = {"resumen": row[2]}
-    return {"id": row[0], "archivo": row[1], "fecha": row[3], "datos": resumen}
+    resumen = _loads_public_summary(row[2])
+    return {
+        "id": row[0],
+        "archivo": _archivo_publico(row[1]),
+        "fecha": row[3],
+        "codigo_paciente": _codigo_paciente(row[0], row[1], resumen, row[4]),
+        "datos": resumen,
+    }
 
 @app.get("/hcd/reportes/exportar")
 def exportar_reportes():
@@ -365,11 +417,14 @@ def exportar_reportes():
     con.close()
     resultado = []
     for r in rows:
-        try:
-            resumen = json.loads(r[2])
-        except Exception:
-            resumen = {"resumen": r[2]}
-        resultado.append({"id": r[0], "archivo": r[1], "datos": resumen, "texto_extraido": r[3], "fecha": r[4]})
+        resumen = _loads_public_summary(r[2])
+        resultado.append({
+            "id": r[0],
+            "codigo_paciente": _codigo_paciente(r[0], r[1], resumen, r[3]),
+            "archivo": _archivo_publico(r[1]),
+            "datos": resumen,
+            "fecha": r[4],
+        })
     return resultado
 
 
@@ -667,22 +722,22 @@ def internaciones_indicadores(periodo: str):
     datos = _indicadores_periodo_int(periodo)
     if datos is None:
         raise HTTPException(status_code=404, detail=f"No hay indicadores para el período {periodo}")
-    return datos
+    return sanitize_public_payload(datos)
 
 
 @app.get("/internaciones/episodios/{periodo}")
 def internaciones_episodios(periodo: str):
-    return _episodios_periodo_int(periodo)
+    return sanitize_public_payload(_episodios_periodo_int(periodo))
 
 
 @app.get("/internaciones/reingresos/{periodo}")
 def internaciones_reingresos(periodo: str):
-    return _reingresos_periodo_int(periodo)
+    return sanitize_public_payload(_reingresos_periodo_int(periodo))
 
 
 @app.get("/internaciones/historico/{codigo_hc}")
 def internaciones_historico(codigo_hc: str):
-    return _historico_por_hc_int(codigo_hc)
+    return sanitize_public_payload(_historico_por_hc_int(codigo_hc))
 
 
 @app.post("/hcd/procesar-modelo")
@@ -712,7 +767,7 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     pac_codigo = _re.sub(r'[^A-Za-z0-9]', '', archivo.filename)[:10].upper() or "PAC"
     registros = parsear_intervenciones(texto, pac_codigo)
     if not registros:
-        return {"error": "Sin intervenciones", "archivo": archivo.filename}
+        return {"error": "Sin intervenciones", "archivo": _archivo_publico(archivo.filename)}
     modelo = joblib.load("modelo_area_intervenciones.pkl")
     areas_detalle = []
     for r in registros:
@@ -720,7 +775,7 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
         nombre_prof = m.group(1).strip() if m else None
         area, regla = clasificar_area_hibrido(r["texto"], nombre_prof, modelo)
         r["id_intervencion"] = generar_id_intervencion(pac_codigo, r["fecha"], r["hora"], area, r["tipo"], r["texto"])
-        areas_detalle.append({"area": area, "regla": regla, "texto": r["texto"][:80],
+        areas_detalle.append({"area": area, "regla": pseudonimizar_texto(regla), "texto": pseudonimizar_texto(r["texto"][:80]),
                               "id": r["id_intervencion"], "cuenta": r["criterio_conteo"]["cuenta"]})
     conteo = dict(Counter([a["area"] for a in areas_detalle if a["cuenta"]]))
     variables_dict = {
@@ -758,7 +813,7 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
         if area_sm is None and especialidad and not es_sm:
             # Es externo con especialidad declarada
             ics_prof.append({
-                "profesional": nombre,
+                "profesional": "[PROFESIONAL_ELIMINADO]",
                 "especialidad": especialidad,
                 "estado": "detectada"
             })
@@ -772,14 +827,15 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
                 "estado_interconsulta": estado_p,
                 "score": score_p,
                 "contar": True,
-                "evidencia": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}",
-                "texto": f"Profesional externo: {ic_p['profesional']} - {ic_p['especialidad']}"
+                "evidencia": f"Profesional externo - {ic_p['especialidad']}",
+                "texto": f"Profesional externo - {ic_p['especialidad']}"
             })
     total_contadas = sum(1 for r in registros if r.get("criterio_conteo", {}).get("cuenta", False))
-    resumen = {"archivo": archivo.filename, "total_intervenciones": total_contadas, "total_registros_raw": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros if r.get("criterio_conteo", {}).get("cuenta", False)])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "detalle_clasificacion": areas_detalle[:30], "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics[:10]}
+    ics_publicas = sanitize_public_payload(ics[:10])
+    resumen = {"archivo": _archivo_publico(archivo.filename), "total_intervenciones": total_contadas, "total_registros_raw": len(registros), "intervenciones_por_tipo": dict(Counter([next((m for m in ["nota de enfermería","evolución clínica","seguimiento","diagnóstico","indicación","motivo de consulta"] if m in r["tipo"].lower().replace("enfermeria","enfermería").replace("evolucion","evolución").replace("diagnostico","diagnóstico").replace("indicacion","indicación").replace("clinica","clínica")), "otros") for r in registros if r.get("criterio_conteo", {}).get("cuenta", False)])), "internacion": {"dias_totales": dias_internacion, "reingresos": max(0, reingresos-1), "cambios_cama": cambios_cama}, "modelo_nlp": {"modelo": "TF-IDF + Logistic Regression", "accuracy": 0.9298}, "intervenciones_por_area": conteo, "detalle_clasificacion": areas_detalle[:30], "variables_clinicas_detectadas": variables_clinicas, "interconsultas_detectadas": ics_publicas}
+    resumen = sanitize_public_payload(resumen)
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
-        (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
+        (archivo.filename, json.dumps(resumen, ensure_ascii=False), pseudonimizar_texto(texto[:500]), datetime.datetime.now().isoformat()))
     con.commit(); con.close()
     return resumen
-
