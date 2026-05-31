@@ -922,113 +922,133 @@ async def censos_upload(archivo: UploadFile = File(...)):
         }
 
 
+_MOBILE_CSS = """
+  *{box-sizing:border-box}
+  body{font-family:sans-serif;margin:0;padding:20px;background:#0e1117;
+       color:#fafafa;max-width:520px}
+  h2{font-size:18px;margin-bottom:6px}
+  p{font-size:13px;color:#aaa;margin:0 0 16px}
+  label{display:block;margin-bottom:6px;font-size:14px}
+  input[type=file]{display:block;width:100%;padding:12px;background:#1e2130;
+    border:2px dashed #555;border-radius:8px;color:#fafafa;
+    font-size:14px;margin-bottom:14px}
+  button[type=submit]{width:100%;padding:14px;background:#ff4b4b;color:#fff;
+    border:none;border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
+  .ok{padding:14px;border-radius:8px;background:#1a3a1a;
+      border:1px solid #2d6a2d;color:#6fcf6f;white-space:pre-wrap;line-height:1.5}
+  .err{padding:14px;border-radius:8px;background:#3a1a1a;
+       border:1px solid #6a2d2d;color:#cf6f6f;white-space:pre-wrap;line-height:1.5}
+  a{color:#6f9fcf}
+"""
+
 @app.get("/mobile", response_class=HTMLResponse)
 async def mobile_upload_page():
-    return """<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Subir Censo — HCD IA</title>
-<style>
-  *{box-sizing:border-box}
-  body{font-family:sans-serif;margin:0;padding:20px;background:#0e1117;color:#fafafa;max-width:520px}
-  h2{font-size:18px;margin-bottom:6px}
-  p{font-size:13px;color:#aaa;margin:0 0 16px}
-  label{display:block;margin-bottom:6px;font-size:14px}
-  input[type=file]{display:block;width:100%;padding:12px;background:#1e2130;
-    border:2px dashed #555;border-radius:8px;color:#fafafa;font-size:14px;margin-bottom:14px}
-  button{width:100%;padding:14px;background:#ff4b4b;color:#fff;border:none;
-    border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
-  button:disabled{background:#444;cursor:not-allowed}
-  #dbg{margin-top:12px;padding:10px;background:#1a1a2a;border:1px solid #333;
-    border-radius:6px;font-size:12px;font-family:monospace;color:#9fb;
-    white-space:pre-wrap;display:none}
-  #out{margin-top:10px;padding:14px;border-radius:8px;font-size:14px;
-    white-space:pre-wrap;display:none;line-height:1.5}
-  .ok{background:#1a3a1a;border:1px solid #2d6a2d;color:#6fcf6f;display:block!important}
-  .err{background:#3a1a1a;border:1px solid #6a2d2d;color:#cf6f6f;display:block!important}
-  .wait{background:#1a2a3a;border:1px solid #2d4a6a;color:#6f9fcf;display:block!important}
-  .dbg{display:block!important}
-</style>
+<style>{_MOBILE_CSS}</style>
 </head>
 <body>
 <h2>Subir Censo VADIGU</h2>
 <p>Seleccioná el archivo exportado de VADIGU (XLS, XLSX, CSV, HTML, PDF).</p>
-<label>Archivo:</label>
-<input type="file" id="f" accept=".xls,.xlsx,.csv,.html,.htm,.pdf"
-  onchange="onFile()">
-<button type="button" id="btn" onclick="upload()">Subir al servidor</button>
-<div id="dbg"></div>
-<div id="out"></div>
-<script>
-function onFile() {
-  const fi = document.getElementById("f");
-  if (!fi.files.length) return;
-  const f = fi.files[0];
-  const url = window.location.origin + "/censos/upload";
-  dbg("Archivo: " + f.name
-    + "\\nTamaño: " + f.size + " bytes"
-    + "\\nTipo MIME: " + (f.type || "(sin tipo)")
-    + "\\nURL destino: " + url);
-}
-async function upload() {
-  const fi = document.getElementById("f");
-  if (!fi.files.length) { show("Seleccioná un archivo primero.", "err"); return; }
-  const f = fi.files[0];
-  const url = window.location.origin + "/censos/upload";
-  dbg("Archivo: " + f.name
-    + "\\nTamaño: " + f.size + " bytes"
-    + "\\nTipo MIME: " + (f.type || "(sin tipo)")
-    + "\\nURL destino: " + url
-    + "\\nEnviando…");
-  const btn = document.getElementById("btn");
-  btn.disabled = true;
-  show("Subiendo…", "wait");
-  try {
-    const fd = new FormData();
-    fd.append("archivo", f);
-    const r = await fetch(url, {method: "POST", body: fd});
-    const text = await r.text();
-    dbg("Archivo: " + f.name
-      + "\\nTamaño: " + f.size + " bytes"
-      + "\\nTipo MIME: " + (f.type || "(sin tipo)")
-      + "\\nURL destino: " + url
-      + "\\nHTTP status: " + r.status
-      + "\\nRespuesta: " + text.slice(0, 300));
-    let j;
-    try { j = JSON.parse(text); } catch(_) { j = null; }
-    if (r.ok && j && j.ok) {
-      const sm = j.filas_salud_mental != null
-        ? "\\nFilas Salud Mental: " + j.filas_salud_mental : "";
-      show("✓ Archivo recibido\\nTotal filas: " + j.filas_detectadas + sm
-        + "\\n\\nYa podés ver los datos en el sistema.", "ok");
-    } else {
-      const detail = (j && (j.detail || j.error)) || text.slice(0, 200) || "error desconocido";
-      show("✗ HTTP " + r.status + ": " + detail, "err");
-    }
-  } catch(e) {
-    const msg = e.message + (e.stack ? "\\n" + e.stack.split("\\n").slice(0,3).join("\\n") : "");
-    dbg("Archivo: " + f.name
-      + "\\nTamaño: " + f.size + " bytes"
-      + "\\nTipo MIME: " + (f.type || "(sin tipo)")
-      + "\\nURL destino: " + url
-      + "\\nERROR JS: " + msg);
-    show("✗ Error: " + e.message, "err");
-  }
-  btn.disabled = false;
-}
-function dbg(msg) {
-  const el = document.getElementById("dbg");
-  el.textContent = msg; el.className = "dbg";
-}
-function show(msg, cls) {
-  const el = document.getElementById("out");
-  el.textContent = msg; el.className = cls;
-}
-</script>
+<form method="post" action="/mobile/upload" enctype="multipart/form-data">
+  <label>Archivo:</label>
+  <input type="file" name="archivo" accept=".xls,.xlsx,.csv,.html,.htm,.pdf" required>
+  <button type="submit">Subir al servidor</button>
+</form>
 </body>
 </html>"""
+
+
+@app.post("/mobile/upload", response_class=HTMLResponse)
+async def mobile_upload_submit(archivo: UploadFile = File(...)):
+    data     = await archivo.read()
+    filename = archivo.filename or ""
+    ct       = archivo.content_type or ""
+
+    ext, errores = _validar_censo_fastapi(filename, ct, data)
+    if errores:
+        msg = " | ".join(errores)
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Error — HCD IA</title>
+<style>{_MOBILE_CSS}</style></head>
+<body><h2>Error al procesar el archivo</h2>
+<div class="err">{msg}</div>
+<p><a href="/mobile">&larr; Volver</a></p>
+</body></html>""", status_code=400)
+
+    ts        = dt_module.datetime.now(AR_TZ).strftime("%Y%m%d_%H%M%S")
+    safe_name = f"censo_{ts}{ext}"
+
+    try:
+        with _tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = pathlib.Path(tmp.name)
+        try:
+            df = _leer_archivo_censo(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        cols_all = list(df.columns)
+        cols_pub = [c for c in cols_all if c.lower() not in _CENSO_PRIV_COLS]
+
+        filas_sm = None
+        try:
+            df_sm = _filtrar_sm(df)
+            stats  = _stats_servicio_sm(df)
+            filas_sm = len(df_sm)
+            if not df_sm.empty:
+                df_sm = df_sm.copy()
+                df_sm["_archivo"] = safe_name
+                save_cols = [c for c in df_sm.columns if c.lower() not in _CENSO_PRIV_COLS]
+                payload = {
+                    "timestamp":        ts,
+                    "filename_publico": safe_name,
+                    "filas_detectadas": len(df),
+                    "filas_sm":         filas_sm,
+                    "stats":            stats,
+                    "data":             df_sm[save_cols].to_dict(orient="records"),
+                }
+                (_MOBILE_UPLOAD_DIR / f"censo_{ts}.json").write_text(
+                    json.dumps(payload, default=str, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass
+
+        sm_line = f"\nFilas Salud Mental: {filas_sm}" if filas_sm is not None else ""
+        cols_line = ", ".join(cols_pub[:8]) + ("…" if len(cols_pub) > 8 else "")
+        result_text = (
+            f"Archivo guardado: {safe_name}\n"
+            f"Total filas: {len(df)}{sm_line}\n"
+            f"Columnas: {cols_line}\n\n"
+            f"Datos disponibles en el sistema."
+        )
+        return f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OK — HCD IA</title>
+<style>{_MOBILE_CSS}</style></head>
+<body><h2>Archivo recibido</h2>
+<div class="ok">{result_text}</div>
+<p><a href="/mobile">&larr; Subir otro</a></p>
+</body></html>"""
+
+    except Exception as exc:
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Error — HCD IA</title>
+<style>{_MOBILE_CSS}</style></head>
+<body><h2>Error al procesar el archivo</h2>
+<div class="err">{exc}</div>
+<p><a href="/mobile">&larr; Volver</a></p>
+</body></html>""", status_code=500)
 
 
 @app.post("/hcd/procesar-modelo")
