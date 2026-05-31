@@ -9,6 +9,7 @@ import pypdf
 from chromadb.utils import embedding_functions
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 import datetime as dt_module
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,8 @@ AR_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma:2b")
 BASE_DIR = pathlib.Path(__file__).resolve().parent
+_MOBILE_UPLOAD_DIR = BASE_DIR.parent / "uploads" / "censos"
+_MOBILE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 HCD_PATH = BASE_DIR / "hcd" / "data" / "json_maestro_hc_salud_mental.json"
 
 app = FastAPI(title="Sistema HCD IA", version="1.0.0")
@@ -792,7 +795,11 @@ def internaciones_historico(codigo_hc: str):
 # ── Censo upload (móvil / FastAPI directo) ────────────────────────────────────
 
 import tempfile as _tempfile
-from pipeline.censo.modulo_censo_mensual import leer_archivo_censo as _leer_archivo_censo
+from pipeline.censo.modulo_censo_mensual import (
+    leer_archivo_censo as _leer_archivo_censo,
+    filtrar_salud_mental as _filtrar_sm,
+    stats_servicio_sm as _stats_servicio_sm,
+)
 
 _CENSO_ALLOWED_EXTS  = {".pdf", ".csv", ".xls", ".xlsx", ".html", ".htm"}
 _CENSO_MAX_BYTES     = 200 * 1024 * 1024   # 200 MB
@@ -872,11 +879,28 @@ async def censos_upload(archivo: UploadFile = File(...)):
                     if c.lower() not in _CENSO_PRIV_COLS]
 
         filas_sm = None
-        if "Area" in df.columns:
-            sm_mask  = df["Area"].map(
-                lambda v: re.sub(r'\s+', ' ', str(v)).strip().lower()
-            ) == "salud mental"
-            filas_sm = int(sm_mask.sum())
+        try:
+            df_sm  = _filtrar_sm(df)
+            stats  = _stats_servicio_sm(df)
+            filas_sm = len(df_sm)
+            if not df_sm.empty:
+                df_sm = df_sm.copy()
+                df_sm["_archivo"] = safe_name
+                save_cols = [c for c in df_sm.columns if c.lower() not in _CENSO_PRIV_COLS]
+                payload = {
+                    "timestamp":        ts,
+                    "filename_publico": safe_name,
+                    "filas_detectadas": len(df),
+                    "filas_sm":         filas_sm,
+                    "stats":            stats,
+                    "data":             df_sm[save_cols].to_dict(orient="records"),
+                }
+                (_MOBILE_UPLOAD_DIR / f"censo_{ts}.json").write_text(
+                    json.dumps(payload, default=str, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+        except Exception:
+            pass
 
         return {
             "ok":                True,
@@ -896,6 +920,73 @@ async def censos_upload(archivo: UploadFile = File(...)):
             "columnas_detectadas": None,
             "error":             str(exc),
         }
+
+
+@app.get("/mobile", response_class=HTMLResponse)
+async def mobile_upload_page():
+    return """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Subir Censo — HCD IA</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:sans-serif;margin:0;padding:20px;background:#0e1117;color:#fafafa;max-width:520px}
+  h2{font-size:18px;margin-bottom:6px}
+  p{font-size:13px;color:#aaa;margin:0 0 16px}
+  label{display:block;margin-bottom:6px;font-size:14px}
+  input[type=file]{display:block;width:100%;padding:12px;background:#1e2130;
+    border:2px dashed #555;border-radius:8px;color:#fafafa;font-size:14px;margin-bottom:14px}
+  button{width:100%;padding:14px;background:#ff4b4b;color:#fff;border:none;
+    border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
+  button:disabled{background:#444;cursor:not-allowed}
+  #out{margin-top:16px;padding:14px;border-radius:8px;font-size:14px;
+    white-space:pre-wrap;display:none;line-height:1.5}
+  .ok{background:#1a3a1a;border:1px solid #2d6a2d;color:#6fcf6f;display:block!important}
+  .err{background:#3a1a1a;border:1px solid #6a2d2d;color:#cf6f6f;display:block!important}
+  .wait{background:#1a2a3a;border:1px solid #2d4a6a;color:#6f9fcf;display:block!important}
+</style>
+</head>
+<body>
+<h2>Subir Censo VADIGU</h2>
+<p>Seleccioná el archivo exportado de VADIGU (XLS, XLSX, CSV, HTML, PDF).</p>
+<label>Archivo:</label>
+<input type="file" id="f" accept=".xls,.xlsx,.csv,.html,.htm,.pdf">
+<button id="btn" onclick="upload()">Subir al servidor</button>
+<div id="out"></div>
+<script>
+async function upload() {
+  const fi = document.getElementById("f");
+  if (!fi.files.length) { show("Seleccioná un archivo primero.", "err"); return; }
+  const btn = document.getElementById("btn");
+  btn.disabled = true;
+  show("Subiendo\\u2026", "wait");
+  try {
+    const fd = new FormData();
+    fd.append("archivo", fi.files[0]);
+    const r = await fetch("/censos/upload", {method: "POST", body: fd});
+    const j = await r.json();
+    if (r.ok && j.ok) {
+      const sm = j.filas_salud_mental != null
+        ? "\\nFilas Salud Mental: " + j.filas_salud_mental : "";
+      show("\\u2713 Archivo recibido\\nTotal filas: " + j.filas_detectadas + sm
+        + "\\n\\nYa pod\\u00e9s ver los datos en el sistema.", "ok");
+    } else {
+      show("\\u2717 " + (j.detail || j.error || "error desconocido"), "err");
+    }
+  } catch(e) {
+    show("\\u2717 Error de red: " + e.message, "err");
+  }
+  btn.disabled = false;
+}
+function show(msg, cls) {
+  const el = document.getElementById("out");
+  el.textContent = msg; el.className = cls;
+}
+</script>
+</body>
+</html>"""
 
 
 @app.post("/hcd/procesar-modelo")

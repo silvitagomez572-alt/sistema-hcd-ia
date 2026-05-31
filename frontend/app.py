@@ -184,64 +184,48 @@ if modulo == "📋 Censo Mensual":
                 st.warning("No se encontraron filas con Estado=Ocupada y Area=Salud Mental.")
 
         st.divider()
-        st.subheader("📱 Subida móvil — acceso directo")
-        st.caption("Sin componente Streamlit. El archivo va directo al servidor por fetch() nativo del browser.")
-        st.components.v1.html("""<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-  body{font-family:sans-serif;margin:12px;background:#0e1117;color:#fafafa}
-  input[type=file]{display:block;width:100%;padding:10px 0;color:#fafafa;font-size:15px}
-  button{margin-top:10px;padding:10px 24px;background:#ff4b4b;color:#fff;
-         border:none;border-radius:6px;font-size:15px;cursor:pointer;width:100%}
-  button:disabled{background:#555;cursor:not-allowed}
-  #out{margin-top:12px;padding:10px;border-radius:6px;font-size:13px;
-       white-space:pre-wrap;word-break:break-all;min-height:36px}
-  .ok{background:#1a3a1a;border:1px solid #2d6a2d;color:#6fcf6f}
-  .err{background:#3a1a1a;border:1px solid #6a2d2d;color:#cf6f6f}
-  .wait{background:#1a2a3a;border:1px solid #2d4a6a;color:#6f9fcf}
-</style>
-</head>
-<body>
-<input type="file" id="f"
-       accept=".pdf,.csv,.xls,.xlsx,.html,.htm,
-               application/pdf,text/csv,application/vnd.ms-excel,
-               application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
-               text/html">
-<button id="btn" onclick="upload()">Subir al servidor</button>
-<div id="out"></div>
-<script>
-const API = "http://192.168.100.44:8000/censos/upload";
-async function upload() {
-  const fi = document.getElementById("f");
-  if (!fi.files.length) { show("Seleccioná un archivo primero.", "err"); return; }
-  const btn = document.getElementById("btn");
-  btn.disabled = true;
-  show("Subiendo…", "wait");
-  try {
-    const fd = new FormData();
-    fd.append("archivo", fi.files[0]);
-    const r = await fetch(API, {method:"POST", body:fd});
-    const j = await r.json();
-    if (r.ok && j.ok) {
-      const sm = j.filas_salud_mental != null ? " · " + j.filas_salud_mental + " filas SM" : "";
-      show("✓ " + j.filename_publico + "\\n" + j.filas_detectadas + " filas totales" + sm, "ok");
-    } else {
-      show("✗ " + (j.detail || j.error || "error desconocido"), "err");
-    }
-  } catch(e) {
-    show("✗ Error de red: " + e.message, "err");
-  }
-  btn.disabled = false;
-}
-function show(msg, cls) {
-  const el = document.getElementById("out");
-  el.textContent = msg; el.className = cls;
-}
-</script>
-</body>
-</html>""", height=220)
+        st.subheader("📱 Subida móvil")
+        st.info(
+            "Desde el celular, abrí en el navegador:\n\n"
+            "**http://192.168.100.44:8000/mobile**\n\n"
+            "Esa página sube el archivo directamente al servidor. "
+            "Después usá el botón de abajo para cargar los datos aquí."
+        )
+        _mobile_dir = _pl.Path(__file__).resolve().parent.parent / "uploads" / "censos"
+        _pending = sorted(_mobile_dir.glob("*.json"), reverse=True) if _mobile_dir.exists() else []
+        if _pending:
+            st.success(f"{len(_pending)} archivo(s) subido(s) desde celular esperando carga.")
+            if st.button("📥 Cargar datos del celular", key="censo_mobile_load"):
+                _frags_mob, _stats_mob = [], []
+                for _jf in _pending:
+                    try:
+                        _payload = json.loads(_jf.read_text(encoding="utf-8"))
+                        _df_mob = pd.DataFrame(_payload.get("data", []))
+                        if not _df_mob.empty:
+                            _frags_mob.append(_df_mob)
+                        _s = _payload.get("stats") or {}
+                        _stats_mob.append({
+                            "Archivo": _payload.get("filename_publico", _jf.name),
+                            "Formato": "MÓVIL",
+                            "Tamaño MB": 0,
+                            "Total SM (18 fijas)": _s.get("total_camas", ""),
+                            "Ocupadas": _s.get("ocupadas_fijas", ""),
+                            "Libres": _s.get("libres_fijas", ""),
+                            "Transitoria - Trasplantados": _s.get("transitorias_ocupadas", ""),
+                        })
+                        _jf.unlink()
+                    except Exception as _e:
+                        st.warning(f"Error al leer {_jf.name}: {_e}")
+                if _frags_mob:
+                    _df_mob_final = pd.concat(_frags_mob, ignore_index=True)
+                    st.session_state["censo_df"] = _df_mob_final
+                    st.session_state["censo_raw_stats"] = pd.DataFrame(_stats_mob)
+                    st.success(f"✓ {len(_df_mob_final)} pacientes cargados desde celular.")
+                    st.rerun()
+                else:
+                    st.warning("Los archivos del celular no contenían datos de Salud Mental.")
+        else:
+            st.caption("Sin archivos pendientes del celular.")
 
         if st.session_state["censo_raw_stats"] is not None:
             _df_st = st.session_state["censo_raw_stats"]
