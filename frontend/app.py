@@ -189,7 +189,7 @@ if modulo == "📋 Censo Mensual":
             "Si el botón de carga principal falla desde celular, usá esta opción. "
             "El archivo se sube directamente al servidor por HTTP sin pasar por el componente de Streamlit."
         )
-        _API_MOBILE = "http://192.168.100.44:8001"
+        _API_MOBILE = "http://192.168.100.44:8000"
         _mob_arch = st.file_uploader(
             "Seleccionar archivo censo (subida directa a FastAPI)",
             type=["pdf", "csv", "xls", "xlsx", "html", "htm",
