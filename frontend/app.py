@@ -184,51 +184,64 @@ if modulo == "📋 Censo Mensual":
                 st.warning("No se encontraron filas con Estado=Ocupada y Area=Salud Mental.")
 
         st.divider()
-        st.subheader("📱 Subida móvil alternativa vía FastAPI")
-        st.caption(
-            "Si el botón de carga principal falla desde celular, usá esta opción. "
-            "El archivo se sube directamente al servidor por HTTP sin pasar por el componente de Streamlit."
-        )
-        _API_MOBILE = "http://192.168.100.44:8000"
-        _mob_arch = st.file_uploader(
-            "Seleccionar archivo censo (subida directa a FastAPI)",
-            type=["pdf", "csv", "xls", "xlsx", "html", "htm",
-                  "application/pdf", "text/csv",
-                  "application/vnd.ms-excel",
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                  "text/html", "application/octet-stream"],
-            key="censo_mobile_uploader",
-        )
-        if _mob_arch and st.button("Subir vía FastAPI", key="censo_mobile_btn"):
-            with st.spinner("Subiendo al servidor..."):
-                try:
-                    _mob_r = requests.post(
-                        f"{_API_MOBILE}/censos/upload",
-                        files={"archivo": (
-                            _mob_arch.name,
-                            _mob_arch.getvalue(),
-                            _mob_arch.type or "application/octet-stream",
-                        )},
-                        timeout=60,
-                    )
-                    if _mob_r.status_code == 200:
-                        _mob_res = _mob_r.json()
-                        if _mob_res.get("ok"):
-                            st.success(
-                                f"Archivo recibido: **{_mob_res['filename_publico']}** — "
-                                f"{_mob_res['filas_detectadas']} filas totales"
-                                + (f", {_mob_res['filas_salud_mental']} filas Salud Mental"
-                                   if _mob_res.get('filas_salud_mental') is not None else "")
-                            )
-                            st.json({k: v for k, v in _mob_res.items() if k != "error"})
-                        else:
-                            st.error(f"El servidor rechazó el archivo: {_mob_res.get('error', 'error desconocido')}")
-                    elif _mob_r.status_code == 400:
-                        st.error(f"Validación: {_mob_r.json().get('detail', _mob_r.text[:200])}")
-                    else:
-                        st.error(f"Error HTTP {_mob_r.status_code}: {_mob_r.text[:200]}")
-                except Exception as _mob_e:
-                    st.error(f"Error de conexión con {_API_MOBILE}: {_mob_e}")
+        st.subheader("📱 Subida móvil — acceso directo")
+        st.caption("Sin componente Streamlit. El archivo va directo al servidor por fetch() nativo del browser.")
+        st.components.v1.html("""<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:sans-serif;margin:12px;background:#0e1117;color:#fafafa}
+  input[type=file]{display:block;width:100%;padding:10px 0;color:#fafafa;font-size:15px}
+  button{margin-top:10px;padding:10px 24px;background:#ff4b4b;color:#fff;
+         border:none;border-radius:6px;font-size:15px;cursor:pointer;width:100%}
+  button:disabled{background:#555;cursor:not-allowed}
+  #out{margin-top:12px;padding:10px;border-radius:6px;font-size:13px;
+       white-space:pre-wrap;word-break:break-all;min-height:36px}
+  .ok{background:#1a3a1a;border:1px solid #2d6a2d;color:#6fcf6f}
+  .err{background:#3a1a1a;border:1px solid #6a2d2d;color:#cf6f6f}
+  .wait{background:#1a2a3a;border:1px solid #2d4a6a;color:#6f9fcf}
+</style>
+</head>
+<body>
+<input type="file" id="f"
+       accept=".pdf,.csv,.xls,.xlsx,.html,.htm,
+               application/pdf,text/csv,application/vnd.ms-excel,
+               application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
+               text/html">
+<button id="btn" onclick="upload()">Subir al servidor</button>
+<div id="out"></div>
+<script>
+const API = "http://192.168.100.44:8000/censos/upload";
+async function upload() {
+  const fi = document.getElementById("f");
+  if (!fi.files.length) { show("Seleccioná un archivo primero.", "err"); return; }
+  const btn = document.getElementById("btn");
+  btn.disabled = true;
+  show("Subiendo…", "wait");
+  try {
+    const fd = new FormData();
+    fd.append("archivo", fi.files[0]);
+    const r = await fetch(API, {method:"POST", body:fd});
+    const j = await r.json();
+    if (r.ok && j.ok) {
+      const sm = j.filas_salud_mental != null ? " · " + j.filas_salud_mental + " filas SM" : "";
+      show("✓ " + j.filename_publico + "\\n" + j.filas_detectadas + " filas totales" + sm, "ok");
+    } else {
+      show("✗ " + (j.detail || j.error || "error desconocido"), "err");
+    }
+  } catch(e) {
+    show("✗ Error de red: " + e.message, "err");
+  }
+  btn.disabled = false;
+}
+function show(msg, cls) {
+  const el = document.getElementById("out");
+  el.textContent = msg; el.className = cls;
+}
+</script>
+</body>
+</html>""", height=220)
 
         if st.session_state["censo_raw_stats"] is not None:
             _df_st = st.session_state["censo_raw_stats"]
