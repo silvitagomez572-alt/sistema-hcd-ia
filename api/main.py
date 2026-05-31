@@ -941,44 +941,86 @@ async def mobile_upload_page():
   button{width:100%;padding:14px;background:#ff4b4b;color:#fff;border:none;
     border-radius:8px;font-size:16px;font-weight:bold;cursor:pointer}
   button:disabled{background:#444;cursor:not-allowed}
-  #out{margin-top:16px;padding:14px;border-radius:8px;font-size:14px;
+  #dbg{margin-top:12px;padding:10px;background:#1a1a2a;border:1px solid #333;
+    border-radius:6px;font-size:12px;font-family:monospace;color:#9fb;
+    white-space:pre-wrap;display:none}
+  #out{margin-top:10px;padding:14px;border-radius:8px;font-size:14px;
     white-space:pre-wrap;display:none;line-height:1.5}
   .ok{background:#1a3a1a;border:1px solid #2d6a2d;color:#6fcf6f;display:block!important}
   .err{background:#3a1a1a;border:1px solid #6a2d2d;color:#cf6f6f;display:block!important}
   .wait{background:#1a2a3a;border:1px solid #2d4a6a;color:#6f9fcf;display:block!important}
+  .dbg{display:block!important}
 </style>
 </head>
 <body>
 <h2>Subir Censo VADIGU</h2>
 <p>Seleccioná el archivo exportado de VADIGU (XLS, XLSX, CSV, HTML, PDF).</p>
 <label>Archivo:</label>
-<input type="file" id="f" accept=".xls,.xlsx,.csv,.html,.htm,.pdf">
-<button id="btn" onclick="upload()">Subir al servidor</button>
+<input type="file" id="f" accept=".xls,.xlsx,.csv,.html,.htm,.pdf"
+  onchange="onFile()">
+<button type="button" id="btn" onclick="upload()">Subir al servidor</button>
+<div id="dbg"></div>
 <div id="out"></div>
 <script>
+function onFile() {
+  const fi = document.getElementById("f");
+  if (!fi.files.length) return;
+  const f = fi.files[0];
+  const url = window.location.origin + "/censos/upload";
+  dbg("Archivo: " + f.name
+    + "\\nTamaño: " + f.size + " bytes"
+    + "\\nTipo MIME: " + (f.type || "(sin tipo)")
+    + "\\nURL destino: " + url);
+}
 async function upload() {
   const fi = document.getElementById("f");
   if (!fi.files.length) { show("Seleccioná un archivo primero.", "err"); return; }
+  const f = fi.files[0];
+  const url = window.location.origin + "/censos/upload";
+  dbg("Archivo: " + f.name
+    + "\\nTamaño: " + f.size + " bytes"
+    + "\\nTipo MIME: " + (f.type || "(sin tipo)")
+    + "\\nURL destino: " + url
+    + "\\nEnviando…");
   const btn = document.getElementById("btn");
   btn.disabled = true;
-  show("Subiendo\\u2026", "wait");
+  show("Subiendo…", "wait");
   try {
     const fd = new FormData();
-    fd.append("archivo", fi.files[0]);
-    const r = await fetch("/censos/upload", {method: "POST", body: fd});
-    const j = await r.json();
-    if (r.ok && j.ok) {
+    fd.append("archivo", f);
+    const r = await fetch(url, {method: "POST", body: fd});
+    const text = await r.text();
+    dbg("Archivo: " + f.name
+      + "\\nTamaño: " + f.size + " bytes"
+      + "\\nTipo MIME: " + (f.type || "(sin tipo)")
+      + "\\nURL destino: " + url
+      + "\\nHTTP status: " + r.status
+      + "\\nRespuesta: " + text.slice(0, 300));
+    let j;
+    try { j = JSON.parse(text); } catch(_) { j = null; }
+    if (r.ok && j && j.ok) {
       const sm = j.filas_salud_mental != null
         ? "\\nFilas Salud Mental: " + j.filas_salud_mental : "";
-      show("\\u2713 Archivo recibido\\nTotal filas: " + j.filas_detectadas + sm
-        + "\\n\\nYa pod\\u00e9s ver los datos en el sistema.", "ok");
+      show("✓ Archivo recibido\\nTotal filas: " + j.filas_detectadas + sm
+        + "\\n\\nYa podés ver los datos en el sistema.", "ok");
     } else {
-      show("\\u2717 " + (j.detail || j.error || "error desconocido"), "err");
+      const detail = (j && (j.detail || j.error)) || text.slice(0, 200) || "error desconocido";
+      show("✗ HTTP " + r.status + ": " + detail, "err");
     }
   } catch(e) {
-    show("\\u2717 Error de red: " + e.message, "err");
+    const msg = e.message + (e.stack ? "\\n" + e.stack.split("\\n").slice(0,3).join("\\n") : "");
+    dbg("Archivo: " + f.name
+      + "\\nTamaño: " + f.size + " bytes"
+      + "\\nTipo MIME: " + (f.type || "(sin tipo)")
+      + "\\nURL destino: " + url
+      + "\\nERROR JS: " + msg);
+    show("✗ Error: " + e.message, "err");
   }
   btn.disabled = false;
+}
+function dbg(msg) {
+  const el = document.getElementById("dbg");
+  el.textContent = msg; el.className = "dbg";
 }
 function show(msg, cls) {
   const el = document.getElementById("out");
