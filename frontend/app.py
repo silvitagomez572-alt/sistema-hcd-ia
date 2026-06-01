@@ -281,6 +281,9 @@ if modulo == "📋 Censo Mensual":
         if _df_censo is None or _df_censo.empty:
             st.info("Primero cargá los archivos en la pestaña **📥 Cargar Censos**.")
         else:
+            import plotly.graph_objects as _go
+            import re as _re_stats
+
             _df_st2 = st.session_state.get("censo_raw_stats")
             _n_pac = len(_df_censo)
 
@@ -304,28 +307,130 @@ if modulo == "📋 Censo Mensual":
             c3.metric("Promedio estada (días)", _prom_estada if _prom_estada is not None else "N/D")
             c4.metric("Giro camas", _giro if _giro is not None else "N/D")
 
-            if _df_st2 is not None and len(_df_st2) > 1:
-                import altair as alt
-                import re as _re2
-                def _ext_fecha(nombre):
-                    _m = _re2.search(r'(\d{2}[-_/]\d{2}[-_/]\d{4}|\d{4}[-_/]\d{2}[-_/]\d{2})', nombre)
-                    return _m.group(1).replace("_", "/").replace("-", "/") if _m else nombre
-                _df_chart = _df_st2[["Archivo", "Ocupadas"]].copy()
-                _df_chart["Día"] = _df_chart["Archivo"].map(_ext_fecha)
-                st.subheader("Ocupación SM por día")
-                _ch = (
-                    alt.Chart(_df_chart)
-                    .mark_line(point=True, color="#4C78A8")
-                    .encode(
-                        x=alt.X("Día:N", title="Día / Archivo", sort=None),
-                        y=alt.Y("Ocupadas:Q", title="Camas fijas SM ocupadas"),
-                        tooltip=["Día", "Ocupadas"],
-                    )
-                    .properties(height=260)
+            _PLOTLY_LAYOUT = dict(
+                paper_bgcolor="#0e1117",
+                plot_bgcolor="#1e2130",
+                font=dict(color="#fafafa", size=12),
+                margin=dict(l=50, r=20, t=40, b=60),
+                height=280,
+            )
+
+            def _etiqueta_archivo(nombre):
+                _m = _re_stats.search(
+                    r'(\d{2}[-_/]\d{2}[-_/]\d{4}|\d{4}[-_/]\d{2}[-_/]\d{2})', nombre
                 )
-                st.altair_chart(_ch, use_container_width=True)
+                return _m.group(1).replace("_", "/").replace("-", "/") if _m else nombre
+
+            # ── Gráfico 1: Serie temporal de internados SM ─────────────────
+            if _df_st2 is not None and "Ocupadas" in _df_st2.columns:
+                _df_g1 = _df_st2.copy()
+                _df_g1["Eje"] = _df_g1["Archivo"].map(_etiqueta_archivo)
+                _df_g1["Ocupadas_n"] = pd.to_numeric(_df_g1["Ocupadas"], errors="coerce").fillna(0)
+                _fig1 = _go.Figure()
+                _fig1.add_trace(_go.Scatter(
+                    x=_df_g1["Eje"], y=_df_g1["Ocupadas_n"],
+                    mode="lines+markers",
+                    name="Internados SM",
+                    line=dict(color="#4C78A8", width=2),
+                    marker=dict(size=7),
+                    hovertemplate="<b>%{x}</b><br>Internados: %{y}<extra></extra>",
+                ))
+                _fig1.update_layout(
+                    title="Internados SM por fecha",
+                    xaxis_title="Fecha / Archivo",
+                    yaxis_title="Camas ocupadas",
+                    **_PLOTLY_LAYOUT,
+                )
+                st.plotly_chart(_fig1, use_container_width=True)
+
+            # ── Gráfico 2: Camas ocupadas vs libres ────────────────────────
+            if (_df_st2 is not None
+                    and "Ocupadas" in _df_st2.columns
+                    and "Libres" in _df_st2.columns):
+                _df_g2 = _df_st2.copy()
+                _df_g2["Eje"] = _df_g2["Archivo"].map(_etiqueta_archivo)
+                _df_g2["Ocu_n"] = pd.to_numeric(_df_g2["Ocupadas"], errors="coerce").fillna(0)
+                _df_g2["Lib_n"] = pd.to_numeric(_df_g2["Libres"],   errors="coerce").fillna(0)
+                _fig2 = _go.Figure()
+                _fig2.add_trace(_go.Bar(
+                    x=_df_g2["Eje"], y=_df_g2["Ocu_n"],
+                    name="Ocupadas", marker_color="#e45756",
+                    hovertemplate="<b>%{x}</b><br>Ocupadas: %{y}<extra></extra>",
+                ))
+                _fig2.add_trace(_go.Bar(
+                    x=_df_g2["Eje"], y=_df_g2["Lib_n"],
+                    name="Libres", marker_color="#72b7b2",
+                    hovertemplate="<b>%{x}</b><br>Libres: %{y}<extra></extra>",
+                ))
+                _fig2.update_layout(
+                    title="Camas SM: Ocupadas vs Libres",
+                    barmode="stack",
+                    xaxis_title="Fecha / Archivo",
+                    yaxis_title="Camas",
+                    **_PLOTLY_LAYOUT,
+                )
+                st.plotly_chart(_fig2, use_container_width=True)
+
+            # ── Gráfico 3: Pacientes únicos acumulados del mes ─────────────
+            if "Ingreso" in _df_censo.columns:
+                _df_g3 = _df_censo[["Ingreso"]].copy()
+                _df_g3["_dt"] = pd.to_datetime(_df_g3["Ingreso"], errors="coerce")
+                _df_g3 = _df_g3.dropna(subset=["_dt"]).sort_values("_dt")
+                if not _df_g3.empty:
+                    _df_g3["Acumulados"] = range(1, len(_df_g3) + 1)
+                    _df_g3["FechaStr"] = _df_g3["_dt"].dt.strftime("%d/%m/%Y")
+                    _fig3 = _go.Figure()
+                    _fig3.add_trace(_go.Scatter(
+                        x=_df_g3["FechaStr"], y=_df_g3["Acumulados"],
+                        mode="lines",
+                        fill="tozeroy",
+                        fillcolor="rgba(84,162,75,0.15)",
+                        line=dict(color="#54a24b", width=2),
+                        name="Pacientes únicos",
+                        hovertemplate="<b>%{x}</b><br>Acumulados: %{y}<extra></extra>",
+                    ))
+                    _fig3.update_layout(
+                        title="Pacientes únicos acumulados del mes",
+                        xaxis_title="Fecha de ingreso",
+                        yaxis_title="Pacientes únicos",
+                        **_PLOTLY_LAYOUT,
+                    )
+                    st.plotly_chart(_fig3, use_container_width=True)
+
+            # ── Gráfico 4: Tabla de auditoría de inconsistencias ───────────
+            st.subheader("Auditoría de inconsistencias")
+            _inc = []
+            if "Ingreso" in _df_censo.columns:
+                _mask_sin_ing = pd.to_datetime(_df_censo["Ingreso"], errors="coerce").isna()
+                for _, _r in _df_censo[_mask_sin_ing].iterrows():
+                    _inc.append({
+                        "Tipo": "Ingreso nulo",
+                        "codigoHC": _r.get("codigoHC", ""),
+                        "Detalle": "Fecha de ingreso ausente o inválida",
+                        "Archivo": _r.get("_archivo", ""),
+                    })
+            if "Estada" in _df_censo.columns:
+                _estada_v = pd.to_numeric(_df_censo["Estada"], errors="coerce")
+                for _, _r in _df_censo[(_estada_v <= 0) | _estada_v.isna()].iterrows():
+                    _inc.append({
+                        "Tipo": "Estada inválida",
+                        "codigoHC": _r.get("codigoHC", ""),
+                        "Detalle": f"Estada = {_r.get('Estada', '?')}",
+                        "Archivo": _r.get("_archivo", ""),
+                    })
+            if "tipo_cama" in _df_censo.columns:
+                _mask_sc = _df_censo["tipo_cama"].isna() | (_df_censo["tipo_cama"].astype(str).str.strip() == "")
+                for _, _r in _df_censo[_mask_sc].iterrows():
+                    _inc.append({
+                        "Tipo": "Cama no clasificada",
+                        "codigoHC": _r.get("codigoHC", ""),
+                        "Detalle": f"Cama = {_r.get('Cama', '?')}",
+                        "Archivo": _r.get("_archivo", ""),
+                    })
+            if _inc:
+                st.dataframe(pd.DataFrame(_inc), use_container_width=True, hide_index=True)
             else:
-                st.info("Cargá al menos 2 censos para ver el gráfico de evolución.")
+                st.success("Sin inconsistencias detectadas.")
 
     with tab_pendientes:
         st.subheader("HCs pendientes de procesamiento")
