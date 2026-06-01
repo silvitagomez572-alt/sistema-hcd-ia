@@ -752,7 +752,7 @@ from pipeline.internaciones.modulo_internaciones import (
     indicadores_periodo as _indicadores_periodo_int,
     episodios_periodo as _episodios_periodo_int,
     reingresos_periodo as _reingresos_periodo_int,
-    historico_por_hc as _historico_por_hc_int,
+    historico_por_paciente_id as _historico_por_paciente_id_int,
 )
 
 
@@ -787,9 +787,9 @@ def internaciones_reingresos(periodo: str):
     return sanitize_public_payload(_reingresos_periodo_int(periodo))
 
 
-@app.get("/internaciones/historico/{codigo_hc}")
-def internaciones_historico(codigo_hc: str):
-    return sanitize_public_payload(_historico_por_hc_int(codigo_hc))
+@app.get("/internaciones/historico/{paciente_id}")
+def internaciones_historico(paciente_id: str):
+    return sanitize_public_payload(_historico_por_paciente_id_int(paciente_id))
 
 
 # ── Censo upload (móvil / FastAPI directo) ────────────────────────────────────

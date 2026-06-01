@@ -22,6 +22,7 @@ from typing import Union
 import pandas as pd
 
 from pipeline.censo.modulo_censo_mensual import leer_archivo_censo, clasificar_tipo_cama
+from pipeline.pseudonimizacion import pseudonymize_identifier
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -148,10 +149,8 @@ def _construir_episodios(archivos: dict[date, pathlib.Path]) -> list[dict]:
 
             if key not in episodios:
                 episodios[key] = {
-                    # Identificadores
+                    # Identificador interno — solo en memoria, nunca persiste en BD
                     "documento":   doc,
-                    "codigo_hc":   re.sub(r'\s+', '', str(fila.get("codigoHC", ""))),
-                    "paciente":    str(fila.get("Paciente") or "").strip(),
                     # Ubicación
                     "cama":        str(fila.get("Cama", "")).strip(),
                     "tipo_cama":   str(fila.get("tipo_cama", "")).strip(),
@@ -260,9 +259,7 @@ def _init_tablas(con: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS internaciones_episodios (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             id_episodio    TEXT    NOT NULL,
-            documento      TEXT    NOT NULL,
-            codigo_hc      TEXT,
-            paciente       TEXT,
+            paciente_id    TEXT    NOT NULL,
             cama           TEXT,
             tipo_cama      TEXT,
             fecha_ingreso  TEXT,
@@ -277,8 +274,8 @@ def _init_tablas(con: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_int_ep_periodo
             ON internaciones_episodios(periodo);
-        CREATE INDEX IF NOT EXISTS idx_int_ep_doc
-            ON internaciones_episodios(documento);
+        CREATE INDEX IF NOT EXISTS idx_int_ep_pid
+            ON internaciones_episodios(paciente_id);
 
         CREATE TABLE IF NOT EXISTS internaciones_indicadores (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -316,15 +313,13 @@ def _persistir(
     for ep in episodios:
         con.execute(
             """INSERT INTO internaciones_episodios
-               (id_episodio, documento, codigo_hc, paciente, cama, tipo_cama,
+               (id_episodio, paciente_id, cama, tipo_cama,
                 fecha_ingreso, fecha_egreso, estada_dias, activo, reingreso,
                 fuente_ingreso, fuente_egreso, periodo, procesado_en)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 _id_episodio(ep["documento"], ep["fecha_ingreso"]),
-                ep["documento"],
-                ep["codigo_hc"],
-                ep["paciente"],
+                pseudonymize_identifier(ep["documento"]),
                 ep["cama"],
                 ep["tipo_cama"],
                 ep["fecha_ingreso"].isoformat() if ep["fecha_ingreso"] else None,
@@ -498,13 +493,12 @@ def reingresos_periodo(
     return [dict(r) for r in rows]
 
 
-def historico_por_hc(
-    codigo_hc: str,
+def historico_por_paciente_id(
+    paciente_id: str,
     db_path: Union[str, pathlib.Path, None] = None,
 ) -> list[dict]:
     """
-    Historial de episodios de un paciente identificado por su codigoHC
-    (no expone el DNI).
+    Historial de episodios de un paciente identificado por paciente_id pseudonimizado.
     """
     db_path = pathlib.Path(db_path).expanduser() if db_path else DB_PATH_DEFAULT
     con = sqlite3.connect(str(db_path))
@@ -514,9 +508,9 @@ def historico_por_hc(
         """SELECT id_episodio, periodo, cama, tipo_cama, fecha_ingreso,
                   fecha_egreso, estada_dias, activo, reingreso
            FROM internaciones_episodios
-           WHERE codigo_hc = ?
+           WHERE paciente_id = ?
            ORDER BY fecha_ingreso""",
-        (codigo_hc,),
+        (paciente_id,),
     ).fetchall()
     con.close()
     return [dict(r) for r in rows]
