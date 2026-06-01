@@ -255,9 +255,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS internaciones_episodios (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             id_episodio    TEXT    NOT NULL,
-            documento      TEXT    NOT NULL,
-            codigo_hc      TEXT,
-            paciente       TEXT,
+            paciente_id    TEXT    NOT NULL,
             cama           TEXT,
             tipo_cama      TEXT,
             fecha_ingreso  TEXT,
@@ -272,8 +270,8 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_int_ep_periodo
             ON internaciones_episodios(periodo);
-        CREATE INDEX IF NOT EXISTS idx_int_ep_doc
-            ON internaciones_episodios(documento);
+        CREATE INDEX IF NOT EXISTS idx_int_ep_pid
+            ON internaciones_episodios(paciente_id);
 
         CREATE TABLE IF NOT EXISTS internaciones_indicadores (
             id                      INTEGER PRIMARY KEY AUTOINCREMENT,
