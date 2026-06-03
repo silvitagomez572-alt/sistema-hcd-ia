@@ -142,8 +142,10 @@ async def rag_subir(archivo: UploadFile = File(...)):
 from bs4 import BeautifulSoup
 import xlrd, openpyxl, io
 from pipeline.pseudonimizacion import (
+    crear_registro,
     generar_paciente_id,
     pseudonimizar_texto,
+    pseudonimizar_texto_clinico,
     pseudonymize_identifier,
     sanitize_public_payload,
 )
@@ -219,7 +221,8 @@ async def procesar_hc(archivo: UploadFile = File(...)):
     else:
         soup = BeautifulSoup(contenido, "html.parser")
         texto = soup.get_text(separator=" ", strip=True)[:2000]
-    texto_publico = pseudonimizar_texto(texto)
+    _reg = crear_registro()
+    texto_publico = pseudonimizar_texto_clinico(texto, _reg)["texto_pseudonimizado"]
     prompt = f"""Eres un asistente clinico hospitalario. Analiza esta historia clinica pseudonimizada y extrae en espanol:
 1. Datos clinicos generales disponibles (edad si aparece, servicio)
 2. Principales intervenciones detectadas
@@ -1054,6 +1057,8 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     contenido = await archivo.read()
     soup = BeautifulSoup(contenido, "html.parser")
     texto = soup.get_text(separator="\n", strip=True)
+    _reg = crear_registro()
+    texto = pseudonimizar_texto_clinico(texto, _reg)["texto_pseudonimizado"]
     # Extraer metricas del cronologico
     import re as re2
     fechas = re2.findall(r'(\d{2}/\d{2}/\d{4})', texto)
@@ -1145,6 +1150,6 @@ async def procesar_con_modelo(archivo: UploadFile = File(...)):
     resumen = sanitize_public_payload(resumen)
     con = sqlite3.connect(DB_PATH)
     con.execute("INSERT INTO hcs_procesadas (archivo, resumen, texto_extraido, fecha) VALUES (?,?,?,?)",
-        (archivo.filename, json.dumps(resumen, ensure_ascii=False), pseudonimizar_texto(texto[:500]), datetime.datetime.now().isoformat()))
+        (archivo.filename, json.dumps(resumen, ensure_ascii=False), texto[:500], datetime.datetime.now().isoformat()))
     con.commit(); con.close()
     return resumen

@@ -182,6 +182,110 @@ def sanitize_public_payload(payload: Any) -> Any:
     return payload
 
 
+_RE_NORM_CLAVE = re.compile(r'\s+')
+
+
+def _normalizar_clave(valor: str) -> str:
+    return _RE_NORM_CLAVE.sub(' ', str(valor or '')).strip().upper()
+
+
+class RegistroPacientes:
+    """Assigns sequential pseudonyms (PAC-001, PAC-002…) within a processing session."""
+
+    def __init__(self, prefijo: str = "PAC", inicio: int = 1) -> None:
+        self._prefijo = prefijo
+        self._contador = inicio - 1
+        self._mapa: dict[str, str] = {}
+
+    def obtener_o_asignar(self, valor_real: str) -> str:
+        key = _normalizar_clave(valor_real)
+        if not key:
+            return f"{self._prefijo}-???"
+        if key not in self._mapa:
+            self._contador += 1
+            self._mapa[key] = f"{self._prefijo}-{self._contador:03d}"
+        return self._mapa[key]
+
+    def registrar(self, valor_real: str, codigo_asignado: str) -> None:
+        key = _normalizar_clave(valor_real)
+        if key:
+            self._mapa[key] = codigo_asignado
+
+    def mapa_completo(self) -> dict:
+        return dict(self._mapa)
+
+    def total_registrados(self) -> int:
+        return len(self._mapa)
+
+
+def crear_registro(prefijo: str = "PAC", inicio: int = 1) -> "RegistroPacientes":
+    return RegistroPacientes(prefijo=prefijo, inicio=inicio)
+
+
+_PATRONES_CLINICOS: list[tuple[str, re.Pattern, int]] = [
+    ("email",     re.compile(r'\b[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+\b', re.IGNORECASE), 0),
+    ("nombre",    re.compile(
+        r'(?:Paciente|Nombre\s+y\s+apellido|Nombre|Apellido)\s*[:=]\s*([^\n\r|;,]{3,60})',
+        re.IGNORECASE), 1),
+    ("dni",       re.compile(
+        r'(?:DNI|Documento|Doc\.?|Nro\.?\s*Documento|N(?:ú|u)mero\s+Documento)'
+        r'\s*[:=]?\s*[A-Z]*\s*(\d{6,9})\b', re.IGNORECASE), 1),
+    ("hc",        re.compile(
+        r'(?:HC|Historia\s+Cl(?:í|i)nica|N[°º]?\s*HC|Nro\.?\s*HC)\s*[:=]?\s*(\d{4,8})\b',
+        re.IGNORECASE), 1),
+    ("codigo_hc", re.compile(r'\b\d{1,5}-\d{6,9}-\d{1,3}\b'), 0),
+    ("telefono",  re.compile(
+        r'(?:\+54[\s\-]?(?:\(?\d{2,4}\)?[\s\-]?)?\d{6,8}'
+        r'|\(\d{2,4}\)[\s\-]?\d{6,8}|\b\d{10,11}\b)'), 0),
+    ("dni_standalone", re.compile(r'\b\d{7,8}\b'), 0),
+]
+
+
+def _extraer_matches(texto: str) -> list[tuple[int, int, int, int, str, str]]:
+    ocupados: list[tuple[int, int]] = []
+    resultado: list[tuple[int, int, int, int, str, str]] = []
+
+    def solapado(s: int, e: int) -> bool:
+        return any(s < oc_e and e > oc_s for oc_s, oc_e in ocupados)
+
+    for tipo, patron, grupo in _PATRONES_CLINICOS:
+        for m in patron.finditer(texto):
+            ms, me = m.start(), m.end()
+            if solapado(ms, me):
+                continue
+            if grupo > 0 and m.lastindex is not None and m.lastindex >= grupo:
+                vs, ve = m.start(grupo), m.end(grupo)
+                valor = m.group(grupo).strip()
+            else:
+                vs, ve = ms, me
+                valor = m.group(0).strip()
+            if not valor:
+                continue
+            resultado.append((ms, me, vs, ve, tipo, valor))
+            ocupados.append((ms, me))
+    return resultado
+
+
+def pseudonimizar_texto_clinico(texto: Any, registro: "RegistroPacientes") -> dict:
+    """Replace PII in clinical free text, returning original, pseudonymized, and replacement map."""
+    texto_str = "" if texto is None else str(texto)
+    if not texto_str.strip():
+        return {"texto_original": texto_str, "texto_pseudonimizado": texto_str, "mapa_reemplazos": []}
+    texto_original = texto_str
+    matches = _extraer_matches(texto_str)
+    for ms, me, vs, ve, tipo, valor in sorted(matches, key=lambda x: x[2], reverse=True):
+        reemplazo = registro.obtener_o_asignar(valor)
+        texto_str = texto_str[:vs] + reemplazo + texto_str[ve:]
+    mapa = sorted(
+        [{"tipo": tipo, "original": valor,
+          "reemplazo": registro.obtener_o_asignar(valor),
+          "inicio": vs, "fin": ve}
+         for ms, me, vs, ve, tipo, valor in matches],
+        key=lambda x: x["inicio"],
+    )
+    return {"texto_original": texto_original, "texto_pseudonimizado": texto_str, "mapa_reemplazos": mapa}
+
+
 def redact_dataframe_identifiers(df: Any, id_prefix: str = "PAC"):
     """
     Return a copy of a DataFrame with direct identifiers removed from display/export.

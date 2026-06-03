@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import json
 
-API = "http://localhost:8001"
+API = "http://localhost:8000"
 st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
 modulo = st.sidebar.radio("Modulo", [
