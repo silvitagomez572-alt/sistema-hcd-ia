@@ -225,7 +225,9 @@ def crear_registro(prefijo: str = "PAC", inicio: int = 1) -> "RegistroPacientes"
 _PATRONES_CLINICOS: list[tuple[str, re.Pattern, int]] = [
     ("email",     re.compile(r'\b[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+\b', re.IGNORECASE), 0),
     ("nombre",    re.compile(
-        r'(?:Paciente|Nombre\s+y\s+apellido|Nombre|Apellido)\s*[:=]\s*([^\n\r|;,]{3,60})',
+        r'(?:Paciente|Nombre\s+y\s+apellido|Nombre|Apellido)\s*[:=]\s*'
+        r'((?:(?!\b(?:DNI|Documento|Doc\.?|HC|Historia\s+Cl[íi]nica|'
+        r'Evoluci[óo]n|Nota|Fecha|Edad)\b)[^\n\r|;,.]){3,60})',
         re.IGNORECASE), 1),
     ("dni",       re.compile(
         r'(?:DNI|Documento|Doc\.?|Nro\.?\s*Documento|N(?:ú|u)mero\s+Documento)'
