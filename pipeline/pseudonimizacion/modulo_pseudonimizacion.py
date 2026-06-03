@@ -256,11 +256,15 @@ def _extraer_matches(texto: str) -> list[tuple[int, int, int, int, str, str]]:
             if solapado(ms, me):
                 continue
             if grupo > 0 and m.lastindex is not None and m.lastindex >= grupo:
-                vs, ve = m.start(grupo), m.end(grupo)
-                valor = m.group(grupo).strip()
+                raw = m.group(grupo)
+                vs = m.start(grupo) + len(raw) - len(raw.lstrip())
+                ve = m.end(grupo) - (len(raw) - len(raw.rstrip()))
+                valor = raw.strip()
             else:
-                vs, ve = ms, me
-                valor = m.group(0).strip()
+                raw = m.group(0)
+                vs = ms + len(raw) - len(raw.lstrip())
+                ve = me - (len(raw) - len(raw.rstrip()))
+                valor = raw.strip()
             if not valor:
                 continue
             resultado.append((ms, me, vs, ve, tipo, valor))
@@ -285,6 +289,10 @@ def pseudonimizar_texto_clinico(texto: Any, registro: "RegistroPacientes") -> di
          for ms, me, vs, ve, tipo, valor in matches],
         key=lambda x: x["inicio"],
     )
+    # Segundo pase: reemplazar todas las ocurrencias exactas ya conocidas en el mapa
+    vistos = {e["original"]: e["reemplazo"] for e in mapa}
+    for original, reemplazo in sorted(vistos.items(), key=lambda x: len(x[0]), reverse=True):
+        texto_str = texto_str.replace(original, reemplazo)
     return {"texto_original": texto_original, "texto_pseudonimizado": texto_str, "mapa_reemplazos": mapa}
 
 

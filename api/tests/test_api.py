@@ -75,3 +75,44 @@ def test_pseudonimizacion_nombre_solo_no_afecta():
     nombres = [valor for ms, me, vs, ve, tipo, valor in matches if tipo == "nombre"]
     assert len(nombres) == 1
     assert nombres[0] == "Ana Torres"
+
+
+def test_segundo_pase_reemplaza_ocurrencias_no_etiquetadas():
+    """El segundo pase reemplaza todas las ocurrencias exactas ya detectadas."""
+    from pipeline.pseudonimizacion.modulo_pseudonimizacion import pseudonimizar_texto_clinico, crear_registro
+
+    texto = "Paciente: Juan Pérez DNI: 30111222. Evolución: Juan Pérez refiere ansiedad."
+    reg = crear_registro()
+    resultado = pseudonimizar_texto_clinico(texto, reg)
+
+    esperado = "Paciente: PAC-002 DNI: PAC-001. Evolución: PAC-002 refiere ansiedad."
+    assert resultado["texto_pseudonimizado"] == esperado, (
+        f"Obtenido : {resultado['texto_pseudonimizado']!r}\n"
+        f"Esperado : {esperado!r}"
+    )
+    assert resultado["texto_original"] == texto
+
+
+def test_segundo_pase_no_introduce_nombres_nuevos():
+    """El segundo pase NO captura nombres que no estaban en el mapa."""
+    from pipeline.pseudonimizacion.modulo_pseudonimizacion import pseudonimizar_texto_clinico, crear_registro
+
+    texto = "Evolución: el paciente colabora con el equipo."
+    reg = crear_registro()
+    resultado = pseudonimizar_texto_clinico(texto, reg)
+
+    # Sin etiquetas PII → mapa vacío → texto sin cambios
+    assert resultado["texto_pseudonimizado"] == texto
+    assert resultado["mapa_reemplazos"] == []
+
+
+def test_espaciado_correcto_entre_reemplazo_y_label():
+    """El reemplazo no debe comerse el espacio entre el nombre y la etiqueta siguiente."""
+    from pipeline.pseudonimizacion.modulo_pseudonimizacion import pseudonimizar_texto_clinico, crear_registro
+
+    texto = "Paciente: Maria Lopez DNI: 12345678"
+    reg = crear_registro()
+    resultado = pseudonimizar_texto_clinico(texto, reg)
+
+    pseu = resultado["texto_pseudonimizado"]
+    assert " DNI:" in pseu, f"Espacio perdido entre nombre y DNI: {pseu!r}"
