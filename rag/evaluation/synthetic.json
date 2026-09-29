@@ -1,0 +1,19 @@
+{
+  "description": "Corpus sintético de procedimientos técnicos, sin contenido de pacientes. No valida calidad clínica.",
+  "documents": [
+    {"id":"backup","text":"El respaldo de SQLite se crea con la API backup. Verificar integrity_check antes de restaurar en una ruta nueva."},
+    {"id":"privacy","text":"Los identificadores personales se conservan únicamente en archivos privados. Nunca publicar nombres, documentos ni historias clínicas."},
+    {"id":"rag","text":"La recuperación documental consulta protocolos revisados. La evaluación mide Recall, Precision y MRR independientemente de la generación."},
+    {"id":"ollama","text":"El servidor Ollama se inicia con ollama serve. La lista de modelos locales se consulta en api/tags sin descargar modelos."},
+    {"id":"census","text":"El censo mensual consolida camas ocupadas y preserva claves de igualdad para deduplicar registros antes de mostrar estadísticas."},
+    {"id":"startup","text":"FastAPI se inicia con uvicorn y expone health. Streamlit requiere configurar la URL de la API antes de iniciar el frontend."}
+  ],
+  "queries": [
+    {"id":"q1","question":"¿Cómo crear un respaldo SQLite y verificar su integridad?","relevant":["backup"]},
+    {"id":"q2","question":"¿Dónde conservar identificadores personales sin publicar historias clínicas?","relevant":["privacy"]},
+    {"id":"q3","question":"¿Qué métricas evalúan la recuperación documental?","relevant":["rag"]},
+    {"id":"q4","question":"¿Cómo iniciar Ollama y consultar los modelos locales?","relevant":["ollama"]},
+    {"id":"q5","question":"¿Cómo deduplicar registros del censo mensual de camas ocupadas?","relevant":["census"]},
+    {"id":"q6","question":"¿Qué URL necesita Streamlit para conectar con FastAPI?","relevant":["startup"]}
+  ]
+}

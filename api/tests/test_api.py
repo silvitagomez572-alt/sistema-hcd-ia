@@ -116,3 +116,44 @@ def test_espaciado_correcto_entre_reemplazo_y_label():
 
     pseu = resultado["texto_pseudonimizado"]
     assert " DNI:" in pseu, f"Espacio perdido entre nombre y DNI: {pseu!r}"
+
+
+# ── Tests de indicadores mensuales ────────────────────────────────────────────
+
+def test_indicadores_mensuales_endpoint():
+    """El endpoint devuelve todos los campos esperados."""
+    payload = {
+        "altas": 10, "defunciones_menor_48": 1, "defunciones_mayor_48": 2, "pase_a": 3,
+        "pacientes_dia": 540, "dias_camas_disponibles": 558, "dias_del_mes": 31, "dias_estada": 320,
+    }
+    response = client.post("/censos/indicadores-mensuales", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    for campo in ("total_egresos", "porcentaje_ocupacional", "promedio_camas_disponibles",
+                  "promedio_diario_pacientes", "giro_camas", "promedio_dia_estada",
+                  "tasa_mortalidad_menor_48", "tasa_mortalidad_mayor_48"):
+        assert campo in data, f"Falta campo: {campo}"
+
+
+def test_indicadores_mensuales_divisor_cero():
+    """Cuando dias_del_mes y total_egresos son 0, todos los ratios devuelven 0."""
+    payload = {
+        "altas": 0, "defunciones_menor_48": 0, "defunciones_mayor_48": 0, "pase_a": 0,
+        "pacientes_dia": 0, "dias_camas_disponibles": 0, "dias_del_mes": 0, "dias_estada": 0,
+    }
+    response = client.post("/censos/indicadores-mensuales", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["porcentaje_ocupacional"] == 0.0
+    assert data["giro_camas"] == 0.0
+    assert data["promedio_diario_pacientes"] == 0.0
+
+
+def test_indicadores_mensuales_promedio_diario():
+    """promedio_diario_pacientes = pacientes_dia / dias_del_mes."""
+    from pipeline.censo.modulo_censo_mensual import calcular_indicadores_mensuales
+    res = calcular_indicadores_mensuales({
+        "pacientes_dia": 300, "dias_del_mes": 30,
+        "dias_camas_disponibles": 540, "altas": 5,
+    })
+    assert res["promedio_diario_pacientes"] == 10.0, f"Esperado 10.0, obtenido {res['promedio_diario_pacientes']}"
