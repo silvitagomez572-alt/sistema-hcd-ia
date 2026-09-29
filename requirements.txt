@@ -1,21 +1,2 @@
-fastapi
-uvicorn
-streamlit
-requests
-pandas
-python-multipart
-beautifulsoup4
-pypdf
-openpyxl
-xlrd
-chromadb
-sentence-transformers
-httpx
-joblib
-scikit-learn
-pillow
-pytesseract
-pdf2image
-pdfplumber
-lxml
-plotly
+# Entorno base reproducible; RAG semántico es opcional.
+-r requirements-core.lock

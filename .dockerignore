@@ -1,0 +1,15 @@
+*
+!Dockerfile
+!requirements-core.lock
+!api/
+!api/*.py
+!frontend/
+!frontend/*.py
+!pipeline/
+!pipeline/**/*.py
+!rag/
+!rag/corpus_manifest.json
+!rag/protocolos/
+!rag/protocolos/*.pdf
+!.streamlit/
+!.streamlit/config.toml

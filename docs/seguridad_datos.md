@@ -1,50 +1,17 @@
-# Política de datos y seguridad del repositorio
+# Privacidad y límites de la entrega
 
-## Principio general
+El repositorio de entrega no incluye historias clínicas, bases SQLite, uploads, modelos entrenados ni diccionario institucional de profesionales. Los informes por paciente y el JSON maestro históricos se conservan en la máquina y se excluyen de la nueva versión pública. El historial previo permanece; no se declara eliminación retrospectiva.
 
-El repositorio público contiene únicamente código fuente, documentación técnica y estructura del proyecto. Ningún dato clínico real, identificatorio o derivado de historias clínicas se versiona en este repositorio.
+Las pruebas usan fixtures sintéticas y bases temporales. No se ejecutaron borrados ni migraciones sobre datos existentes. El repositorio guarda evidencia de pruebas de software y del benchmark sintético, no texto clínico real.
 
-## Archivos excluidos del versionado
+La API limita el tamaño de solicitudes antes de parsear multipart, rechaza rutas no válidas, separa corpus documental aprobado de uploads clínicos y devuelve errores genéricos. Los logs de aplicación incluyen timestamp/nivel/módulo/operación/request ID/estado, sin cuerpos ni parámetros. Iniciar Uvicorn con `--no-access-log`. Las respuestas tienen `Cache-Control: no-store`.
 
-### Historias clínicas originales
-- Los archivos fuente del HMIS VADIGU (`.xls`, `.xlsx`) **no se versionan**.
-- Deben mantenerse exclusivamente en el entorno local seguro de la institución.
+Los reportes NLP nuevos conservan métricas y referencias pseudónimas, no nombres originales de archivo ni narrativa clínica. La pseudonimización de texto devuelve únicamente el texto transformado y cantidad de reemplazos, sin original ni mapa. Sin embargo, regex no reconoce todas las entidades: nombres sin etiqueta, direcciones y cuasiidentificadores pueden escapar. No afirmar anonimización completa ni permitir publicación automática de texto transformado. El original puede existir en memoria de sesión o archivos institucionales; aplicar control de acceso y retención.
 
-### Base de datos clínica
-- `hcs.db` **no se versiona** en el repositorio público.
-- Debe generarse localmente a partir de datos pseudonimizados ejecutando el pipeline de procesamiento.
-- Contiene texto extraído de historias clínicas; su exposición pública constituiría una violación de privacidad.
+`codigoHC` permanece en memoria mientras el parser lo necesita para reconstruir Documento y deduplicar. Las claves se pseudonimizan al persistir/intercambiar; la equivalencia de deduplicación se verifica con fixtures. Se conserva el esquema SQLite y no se migra el histórico. Las bases históricas pueden contener identificadores y deben mantenerse privadas.
 
-### Vectorstore ChromaDB
-- El directorio `rag/db/` (ChromaDB) **no se versiona**.
-- Debe regenerarse localmente ejecutando `pipeline/rag/indexar.py` sobre los protocolos disponibles en `rag/protocolos/`.
+El salt público heredado y los hashes truncados siguen siendo limitaciones. Configurar un salt privado para instalaciones nuevas y conservar el valor institucional durante traslados; cambiarlo sobre datos existentes requiere migración y conciliación, no sustitución improvisada.
 
-### Salidas con datos clínicos o de profesionales
-- Los archivos en `outputs/` (`.csv`, `.xlsx`) **no se versionan**.
-- Pueden contener métricas, validaciones o nombres de profesionales derivados del procesamiento clínico.
+La API usa autenticación Basic opcional y restringe a loopback si falta contraseña. Docker exige contraseña y publica en loopback. Streamlit requiere control de acceso independiente antes de uso en red. Para un hospital faltan identidad institucional, roles, TLS, auditoría durable, cifrado, backup/restore operativo, revisión de amenazas y aprobación clínica/legal institucional.
 
-### Modelos serializados
-- Los archivos `.pkl` **no se versionan**.
-- El modelo `modelo_area_intervenciones.pkl` debe generarse localmente ejecutando el pipeline de entrenamiento en `pipeline/`.
-
-## Pseudonimización
-
-Los pacientes se referencian en toda la documentación y salidas del sistema como `PAC-{id:03d}` (ej: `PAC-001`, `PAC-002`). Ningún nombre real, DNI, teléfono ni dato identificatorio debe aparecer en archivos versionados.
-
-## Qué sí contiene el repositorio público
-
-- Código fuente: `api/`, `frontend/`, `pipeline/`
-- Documentación técnica y clínica: `docs/`
-- Protocolos clínicos de dominio público: `rag/protocolos/` (OPS, Ley 26657, publicaciones científicas)
-- Infraestructura: `Dockerfile`, `docker-compose.yml`, `infra/`, `k8s/`
-- Configuración: `requirements.txt`, `pytest.ini`, `.github/`
-
-## Reproducibilidad
-
-Para reproducir el entorno completo de desarrollo:
-
-1. Clonar el repositorio.
-2. Instalar dependencias: `pip install -r requirements.txt`.
-3. Proveer los archivos `.xls` de VADIGU en entorno local (no incluidos por privacidad).
-4. Ejecutar el pipeline para generar `hcs.db` y el modelo `.pkl`.
-5. Indexar protocolos RAG: `python pipeline/rag/indexar.py`.
+El contexto Docker usa una lista de inclusión y no copia bases, `.env`, `.local`, reportes por paciente ni modelos. RAG solo acepta bytes de protocolos revisados presentes en un manifiesto SHA-256; esto evita indexación de una HC arbitraria, pero cada incorporación de corpus requiere revisión humana. Un directorio nuevo de índice evita mezclar cargas heredadas, que no se borran.

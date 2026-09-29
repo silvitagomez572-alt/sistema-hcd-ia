@@ -1,34 +1,58 @@
-version: "3.9"
-
 services:
   api:
     build: .
+    image: hcd-ia:hardening
     ports:
-      - "8001:8001"
+      - "127.0.0.1:${HCD_API_PORT:-8000}:8000"
+    environment:
+      HCD_DB_PATH: /app/data/hcs.db
+      HCD_UPLOAD_DIR: /app/uploads/censos
+      HCD_PROFESSIONALS_PATH: /app/private/profesionales.json
+      HCD_MODEL_PATH: /app/private/modelo_area_intervenciones.pkl
+      HCD_CENSO_INPUT_DIR: /app/private/censos
+      HCD_API_PASSWORD: ${HCD_API_PASSWORD:?Configure HCD_API_PASSWORD en .env}
+      HCD_API_USER: ${HCD_API_USER:-operador}
+      PSEUDONYM_SALT: ${PSEUDONYM_SALT:-sistema-hcd-ia-local-salt}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
     volumes:
-      - ./api:/app/api
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8001 --reload
-
+      - hcd_data:/app/data
+      - hcd_uploads:/app/uploads
+      - ${HCD_PRIVATE_DIR:-./.local}:/app/private:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+    restart: unless-stopped
   frontend:
-    image: python:3.11-slim
-    working_dir: /app
-    volumes:
-      - ./frontend:/app/frontend
-      - ./requirements.txt:/app/requirements.txt
-    command: >
-      bash -c "pip install streamlit requests pandas -q &&
-               streamlit run frontend/app.py --server.port 8502"
-    ports:
-      - "8502:8502"
+    image: hcd-ia:hardening
     depends_on:
-      - api
-
-  ollama:
-    image: ollama/ollama
+      api:
+        condition: service_healthy
     ports:
-      - "11434:11434"
+      - "127.0.0.1:${HCD_FRONTEND_PORT:-8501}:8501"
+    environment:
+      HCD_API_URL: http://api:8000
+      HCD_PUBLIC_API_URL: http://127.0.0.1:8000
+      HCD_UPLOAD_DIR: /app/uploads/censos
+      HCD_API_PASSWORD: ${HCD_API_PASSWORD:?Configure HCD_API_PASSWORD en .env}
+      HCD_API_USER: ${HCD_API_USER:-operador}
+      PSEUDONYM_SALT: ${PSEUDONYM_SALT:-sistema-hcd-ia-local-salt}
+    volumes:
+      - hcd_uploads:/app/uploads:ro
+    command: ["streamlit", "run", "frontend/app.py", "--server.address=0.0.0.0", "--server.port=8501", "--browser.gatherUsageStats=false"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+  ollama:
+    image: ollama/ollama:0.24.0
+    profiles: [llm]
     volumes:
       - ollama_data:/root/.ollama
-
 volumes:
+  hcd_data:
+  hcd_uploads:
   ollama_data:
