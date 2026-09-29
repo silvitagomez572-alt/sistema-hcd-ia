@@ -1,9 +1,35 @@
 import streamlit as st
-import requests
+import requests as _requests
 import pandas as pd
 import json
 
-API = "http://localhost:8000"
+import os
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parents[1] / '.env', override=False)
+from pipeline.pseudonimizacion.censo_privado import protect_census
+API = os.getenv('HCD_API_URL', 'http://127.0.0.1:8000').rstrip('/')
+_session = _requests.Session()
+_session.trust_env = False
+if os.getenv('HCD_API_PASSWORD'):
+    _session.auth = (os.getenv('HCD_API_USER', 'operador'), os.environ['HCD_API_PASSWORD'])
+def _api_request(method, url, **kwargs):
+    kwargs.setdefault('timeout', (3, 65))
+    try:
+        response = _session.request(method, url, **kwargs)
+        if response.status_code == 401:
+            st.error('La API requiere autenticación. Revisá la configuración local.')
+            st.stop()
+        return response
+    except _requests.RequestException:
+        st.error('La API no está disponible. Verificá que esté iniciada y su configuración local.')
+        st.stop()
+requests = SimpleNamespace(get=lambda url, **kw: _api_request('GET', url, **kw),
+                           post=lambda url, **kw: _api_request('POST', url, **kw),
+                           delete=lambda url, **kw: _api_request('DELETE', url, **kw))
 st.set_page_config(page_title="Sistema HCD IA", layout="wide")
 st.sidebar.title("Sistema HCD IA")
 modulo = st.sidebar.radio("Modulo", [
@@ -114,8 +140,8 @@ if modulo == "📋 Censo Mensual":
         )
         return generar_paciente_id(str(_base))
 
-    tab_carga, tab_stats, tab_pendientes = st.tabs(
-        ["📥 Cargar Censos", "📊 Estadísticas", "⏳ Pendientes"]
+    tab_carga, tab_stats, tab_pendientes, tab_indicadores = st.tabs(
+        ["📥 Cargar Censos", "📊 Estadísticas", "⏳ Pendientes", "📐 Indicadores"]
     )
 
     with tab_carga:
@@ -160,7 +186,7 @@ if modulo == "📋 Censo Mensual":
                             _df_sm["_archivo"] = _nombre_publico
                             fragmentos.append(_df_sm)
                     except Exception as _exc:
-                        _msg = str(_exc)
+                        _msg = "No se pudo interpretar el archivo."
                         if _ext == ".pdf":
                             _msg = f"{_msg} Si el PDF es escaneado o imagen, el censo todavía no usa OCR; cargá una exportación CSV, XLS, XLSX o HTML."
                         errores.append((_nombre_publico, _msg))
@@ -171,13 +197,46 @@ if modulo == "📋 Censo Mensual":
                 st.warning(f"⚠️ {_nombre}: {_msg}")
 
             if fragmentos:
-                _df_cons = pd.concat(fragmentos, ignore_index=True)
+                import re as _re_cols
+                # Diagnóstico por fragmento y normalización defensiva
+                _frags_norm = []
+                _diag_filas = []
+                for _i_f, _df_f in enumerate(fragmentos):
+                    _df_f = _df_f.copy()
+                    # Aplanar MultiIndex (por si algún lector lo dejó sin aplanar)
+                    if isinstance(_df_f.columns, pd.MultiIndex):
+                        _df_f.columns = [
+                            ' '.join(str(c) for c in col if str(c) not in ('', 'nan')).strip()
+                            for col in _df_f.columns
+                        ]
+                    # Normalizar nombres
+                    _df_f.columns = [_re_cols.sub(r'\s+', ' ', str(c)).strip() for c in _df_f.columns]
+                    # Deduplicar
+                    _cols_dup = _df_f.columns[_df_f.columns.duplicated()].tolist()
+                    if _cols_dup:
+                        _df_f = _df_f.loc[:, ~_df_f.columns.duplicated(keep='first')]
+                    _diag_filas.append({
+                        "Fragmento": _i_f + 1,
+                        "Shape": str(_df_f.shape),
+                        "Columnas": str(_df_f.columns.tolist()),
+                        "Cols duplicadas": str(_cols_dup) if _cols_dup else "—",
+                    })
+                    _frags_norm.append(_df_f)
+
+                try:
+                    _df_cons = pd.concat(_frags_norm, ignore_index=True)
+                except Exception as _exc_concat:
+                    st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
+                    with st.expander("Diagnóstico de fragmentos"):
+                        st.dataframe(pd.DataFrame(_diag_filas), hide_index=True)
+                    st.stop()
+
                 if "codigoHC" in _df_cons.columns:
                     if "Ingreso" in _df_cons.columns:
                         _df_cons["Ingreso"] = pd.to_datetime(_df_cons["Ingreso"], unit='ms', errors="coerce")
                         _df_cons = _df_cons.sort_values("Ingreso", na_position="first")
                     _df_cons = _df_cons.drop_duplicates(subset=["codigoHC"], keep="last").reset_index(drop=True)
-                st.session_state["censo_df"] = _df_cons
+                st.session_state["censo_df"] = protect_census(_df_cons)
                 st.session_state["censo_raw_stats"] = pd.DataFrame(stats_lista)
                 st.success(f"{len(archivos_cargados)} archivo(s) → {len(_df_cons)} pacientes únicos en Salud Mental.")
             else:
@@ -187,11 +246,11 @@ if modulo == "📋 Censo Mensual":
         st.subheader("📱 Subida móvil")
         st.info(
             "Desde el celular, abrí en el navegador:\n\n"
-            "**http://192.168.100.44:8000/mobile**\n\n"
+            f"**{os.getenv('HCD_PUBLIC_API_URL', API)}/mobile**\n\n"
             "Esa página sube el archivo directamente al servidor. "
             "Después usá el botón de abajo para cargar los datos aquí."
         )
-        _mobile_dir = _pl.Path(__file__).resolve().parent.parent / "uploads" / "censos"
+        _mobile_dir = _pl.Path(os.getenv("HCD_UPLOAD_DIR", str(_pl.Path(__file__).resolve().parent.parent / "uploads" / "censos")))
         _pending = sorted(_mobile_dir.glob("*.json"), reverse=True) if _mobile_dir.exists() else []
         if _pending:
             st.success(f"{len(_pending)} archivo(s) subido(s) desde celular esperando carga.")
@@ -213,12 +272,12 @@ if modulo == "📋 Censo Mensual":
                             "Libres": _s.get("libres_fijas", ""),
                             "Transitoria - Trasplantados": _s.get("transitorias_ocupadas", ""),
                         })
-                        _jf.unlink()
+                        # Loading does not delete persisted uploads.
                     except Exception as _e:
-                        st.warning(f"Error al leer {_jf.name}: {_e}")
+                        st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
                 if _frags_mob:
                     _df_mob_final = pd.concat(_frags_mob, ignore_index=True)
-                    st.session_state["censo_df"] = _df_mob_final
+                    st.session_state["censo_df"] = protect_census(_df_mob_final)
                     st.session_state["censo_raw_stats"] = pd.DataFrame(_stats_mob)
                     st.success(f"✓ {len(_df_mob_final)} pacientes cargados desde celular.")
                     st.rerun()
@@ -231,10 +290,25 @@ if modulo == "📋 Censo Mensual":
             _df_st = st.session_state["censo_raw_stats"]
             _df_cons2 = st.session_state["censo_df"]
             _n_sm = len(_df_cons2) if _df_cons2 is not None else 0
+            _ocu_serie = pd.to_numeric(_df_st["Ocupadas"], errors="coerce").fillna(0) if "Ocupadas" in _df_st.columns else pd.Series([0])
+            _pac_dia_tot = int(_ocu_serie.sum())
+            _n_dias_cens = len(_df_st)
+            _prom_diario_cens = round(_pac_dia_tot / _n_dias_cens, 1) if _n_dias_cens else 0.0
+
             c1, c2, c3 = st.columns(3)
-            c1.metric("Internados SM (únicos/mes)", _n_sm)
-            c2.metric("Pico camas fijas SM ocupadas", int(_df_st["Ocupadas"].max()))
-            c3.metric("Pico camas fijas SM libres", int(_df_st["Libres"].max()))
+            c1.metric("Pacientes-día (suma mensual)", _pac_dia_tot,
+                      help="Suma de camas fijas SM ocupadas por cada día de censo cargado")
+            c2.metric("Promedio diario de ocupadas", _prom_diario_cens,
+                      help="pacientes-día / días de censo cargados")
+            c3.metric("Pico diario — camas fijas SM", int(_ocu_serie.max()),
+                      help="Máximo de camas ocupadas en un solo día del mes")
+
+            c4, c5, c6 = st.columns(3)
+            c4.metric("Pacientes únicos detectados", _n_sm,
+                      help="Pacientes distintos internados en algún momento del mes (deduplica codigoHC). No usar como indicador de ocupación diaria.")
+            c5.metric("Días de censo cargados", _n_dias_cens)
+            c6.metric("Pico diario — camas libres SM",
+                      int(pd.to_numeric(_df_st["Libres"], errors="coerce").fillna(0).max()) if "Libres" in _df_st.columns else 0)
             st.subheader("Detalle por archivo")
             st.dataframe(_df_st, width='stretch', hide_index=True)
 
@@ -499,6 +573,107 @@ if modulo == "📋 Censo Mensual":
                     key="censo_dl_pend",
                 )
 
+    with tab_indicadores:
+        st.subheader("Indicadores estadísticos mensuales — Salud Mental")
+        st.caption("Fórmulas según hoja SALUD MENTAL. Divisor 0 → resultado 0.")
+
+        # ── Métricas de ocupación derivadas del consolidado (read-only) ───────
+        _raw_st_ind = st.session_state.get("censo_raw_stats")
+        if _raw_st_ind is not None and "Ocupadas" in _raw_st_ind.columns:
+            _ocu_s_ind = pd.to_numeric(_raw_st_ind["Ocupadas"], errors="coerce").fillna(0)
+            _ind_pac_dia_calc   = int(_ocu_s_ind.sum())
+            _ind_n_dias_calc    = len(_raw_st_ind)
+            _ind_prom_dia_calc  = round(_ind_pac_dia_calc / _ind_n_dias_calc, 1) if _ind_n_dias_calc else 0.0
+            _ind_pico_calc      = int(_ocu_s_ind.max())
+            _ind_dias_camas_calc = TOTAL_CAMAS_FIJAS * _ind_n_dias_calc
+
+            st.markdown("**Valores derivados del consolidado cargado**")
+            _ci_r1, _ci_r2, _ci_r3 = st.columns(3)
+            _ci_r1.metric("Pacientes-día (suma mensual)", _ind_pac_dia_calc,
+                          help="Suma de camas fijas SM ocupadas por cada día de censo cargado")
+            _ci_r2.metric("Promedio diario de ocupadas",  _ind_prom_dia_calc,
+                          help="pacientes-día / días de censo cargados")
+            _ci_r3.metric("Pico diario de camas ocupadas", _ind_pico_calc,
+                          help="Máximo de camas fijas SM ocupadas en un solo día del mes")
+
+            if st.button("↻ Precargar calculadora desde consolidado", key="btn_prec_ind"):
+                st.session_state["ind_pac_dia"]    = _ind_pac_dia_calc
+                st.session_state["ind_dias_camas"] = _ind_dias_camas_calc
+                st.session_state["ind_dias_mes"]   = _ind_n_dias_calc
+                st.rerun()
+        else:
+            st.info("Cargá los archivos de censo en **📥 Cargar Censos** para precargar automáticamente los valores de ocupación.")
+
+        with st.form("form_indicadores"):
+            st.markdown("**Egresos** *(valores manuales — no disponibles en el censo diario)*")
+            ci1, ci2, ci3, ci4 = st.columns(4)
+            _altas   = ci1.number_input("Altas",                min_value=0, step=1, key="ind_altas")
+            _def_m48 = ci2.number_input("Def. < 48 h",          min_value=0, step=1, key="ind_def_m48")
+            _def_M48 = ci3.number_input("Def. ≥ 48 h",          min_value=0, step=1, key="ind_def_M48")
+            _pase_a  = ci4.number_input("Pase a otro servicio", min_value=0, step=1, key="ind_pase_a")
+
+            st.markdown("**Ocupación** *(precargados desde consolidado si usaste el botón arriba)*")
+            ci5, ci6, ci7, ci8 = st.columns(4)
+            _pac_dia    = ci5.number_input("Pacientes-día",          min_value=0, step=1, key="ind_pac_dia")
+            _dias_camas = ci6.number_input("Días-camas disponibles", min_value=0, step=1, key="ind_dias_camas")
+            _dias_mes   = ci7.number_input("Días del mes",           min_value=1, value=30, step=1, key="ind_dias_mes")
+            _dias_est   = ci8.number_input("Días de estada (total)", min_value=0, step=1,
+                                           help="Suma de días de internación de los pacientes que egresaron en el mes. Ingresar manualmente.", key="ind_dias_est")
+
+            _calcular = st.form_submit_button("Calcular indicadores", type="primary")
+
+        if _calcular:
+            try:
+                _payload = {
+                    "altas":                  int(_altas),
+                    "defunciones_menor_48":   int(_def_m48),
+                    "defunciones_mayor_48":   int(_def_M48),
+                    "pase_a":                 int(_pase_a),
+                    "pacientes_dia":          int(_pac_dia),
+                    "dias_camas_disponibles": int(_dias_camas),
+                    "dias_del_mes":           int(_dias_mes),
+                    "dias_estada":            int(_dias_est),
+                }
+                _r_ind = requests.post(
+                    f"{API}/censos/indicadores-mensuales",
+                    json=_payload,
+                    timeout=10,
+                )
+                if _r_ind.status_code == 200:
+                    _ind = _r_ind.json()
+                    st.divider()
+                    st.markdown("### Resultados")
+
+                    _ri1, _ri2, _ri3, _ri4 = st.columns(4)
+                    _ri1.metric("Total egresos",                _ind["total_egresos"])
+                    _ri2.metric("% Ocupacional",                f"{_ind['porcentaje_ocupacional']}%")
+                    _ri3.metric("Promedio diario ocupadas",     _ind.get("promedio_diario_pacientes", "—"))
+                    _ri4.metric("Promedio camas disponibles",   _ind["promedio_camas_disponibles"])
+
+                    _ri5, _ri6, _ri7, _ri8 = st.columns(4)
+                    _ri5.metric("Giro de camas",                _ind["giro_camas"])
+                    _ri6.metric("Promedio día de estada",       _ind["promedio_dia_estada"])
+                    _ri7.metric("Tasa mort. < 48 h (%)",        f"{_ind['tasa_mortalidad_menor_48']}%")
+                    _ri8.metric("Tasa mort. ≥ 48 h (%)",        f"{_ind['tasa_mortalidad_mayor_48']}%")
+
+                    with st.expander("Fórmulas aplicadas"):
+                        st.markdown(f"""
+| Indicador | Fórmula | Resultado |
+|-----------|---------|-----------|
+| Total egresos | altas + def<48 + def≥48 + pase_a | **{_ind['total_egresos']}** |
+| % Ocupacional | (pacientes_día × 100) / días-camas disponibles | **{_ind['porcentaje_ocupacional']}%** |
+| Promedio diario ocupadas | pacientes_día / días del mes | **{_ind.get('promedio_diario_pacientes', '—')}** |
+| Prom. camas disponibles | días-camas disponibles / días del mes | **{_ind['promedio_camas_disponibles']}** |
+| Giro de camas | total egresos / prom. camas disponibles | **{_ind['giro_camas']}** |
+| Prom. día de estada | días de estada / total egresos | **{_ind['promedio_dia_estada']}** |
+| Tasa mort. < 48 h | def<48 × 100 / total egresos | **{_ind['tasa_mortalidad_menor_48']}%** |
+| Tasa mort. ≥ 48 h | def≥48 × 100 / total egresos | **{_ind['tasa_mortalidad_mayor_48']}%** |
+""")
+                else:
+                    st.error(f"Error del servidor: {_r_ind.status_code} — {_r_ind.text}")
+            except Exception as _e_ind:
+                st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
+
 elif modulo == "Ingresar HC":
     st.title("Ingresar Historia Clinica")
     tipo = st.radio("Formato", ["HTML/TXT","PDF","Imagen OCR"])
@@ -518,7 +693,7 @@ elif modulo == "Ingresar HC":
                     else:
                         st.error(f"Error: {r.status_code}")
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 elif modulo == "OCR":
     import sys as _sys_ocr
     import pathlib as _pl_ocr
@@ -559,7 +734,7 @@ elif modulo == "OCR":
                 ]
                 st.session_state["ocr_nombre"] = "resultado_ocr"
             except Exception as _e:
-                st.error(f"Error al procesar: {_e}")
+                st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
                 st.session_state["ocr_paginas"] = None
 
     if st.session_state["ocr_paginas"]:
@@ -597,11 +772,149 @@ elif modulo == "OCR":
             key="ocr_download",
         )
 elif modulo == "Pseudonimizacion":
-    st.title("Pseudonimización")
-    c1, c2 = st.columns(2)
-    c1.text_area("Original", value="Paciente: Maria Lopez\nDNI: 28456789", height=150)
-    c2.text_area("Resultado", value="Paciente: [HC_ELIMINADA]\nDNI: [DNI_ELIMINADO]", height=150)
-    st.success("Datos sensibles eliminados.")
+    st.title("Pseudonimización → Procesamiento")
+    st.caption(
+        "La HC ingresa una sola vez: se pseudonimiza primero, y solo el texto "
+        "pseudonimizado continúa al pipeline clínico. El original nunca se almacena."
+    )
+
+    for _k in ("pseu_resultado", "pseu_reporte"):
+        if _k not in st.session_state:
+            st.session_state[_k] = None
+
+    # ── Paso 1: ingreso ──────────────────────────────────────────────────────
+    if st.session_state["pseu_resultado"] is None:
+        tab_texto, tab_archivo = st.tabs(["✏️ Texto directo", "📁 Archivo HC"])
+
+        with tab_texto:
+            texto_input = st.text_area(
+                "Texto clínico original",
+                value=(
+                    "Paciente: Maria Lopez\n"
+                    "DNI: 28456789\n"
+                    "HC: 12345\n"
+                    "Evolución: Maria Lopez refiere ansiedad y dificultad para dormir."
+                ),
+                height=200,
+                key="pseu_text_input",
+            )
+            if st.button("Pseudonimizar texto", key="pseu_text_btn"):
+                if not texto_input.strip():
+                    st.warning("Ingresá texto primero.")
+                else:
+                    with st.spinner("Pseudonimizando..."):
+                        try:
+                            r = requests.post(
+                                f"{API}/hcd/pseudonimizar",
+                                json={"texto": texto_input},
+                                timeout=10,
+                            )
+                            if r.status_code == 200:
+                                data = r.json()
+                                data["nombre_archivo"] = "hc_manual.txt"
+                                st.session_state["pseu_resultado"] = data
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {r.status_code} — {r.text}")
+                        except Exception as e:
+                            st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
+
+        with tab_archivo:
+            archivo_pseu = st.file_uploader(
+                "Archivo HC (HTML/XLS exportado de VADIGU)",
+                type=["html", "htm", "xls", "txt"],
+                key="pseu_file_input",
+            )
+            if archivo_pseu and st.button("Pseudonimizar archivo", key="pseu_file_btn"):
+                with st.spinner("Extrayendo y pseudonimizando..."):
+                    try:
+                        r = requests.post(
+                            f"{API}/hcd/pseudonimizar-archivo",
+                            files={"archivo": (archivo_pseu.name, archivo_pseu.getvalue(), archivo_pseu.type)},
+                            timeout=30,
+                        )
+                        if r.status_code == 200:
+                            st.session_state["pseu_resultado"] = r.json()
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {r.status_code} — {r.text}")
+                    except Exception as e:
+                        st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
+
+    # ── Paso 2: revisión pseudonimización ────────────────────────────────────
+    elif st.session_state["pseu_reporte"] is None:
+        data = st.session_state["pseu_resultado"]
+        st.success("Texto pseudonimizado. El original no se almacena.")
+
+        st.text_area(
+            "Texto pseudonimizado",
+            value=data["texto_pseudonimizado"],
+            height=200,
+            key="pseu_output",
+        )
+
+        st.info(f"Identificadores detectados y reemplazados: {data.get('reemplazos', 0)}. La detección automática no garantiza anonimización completa.")
+
+        col_proc, col_nueva = st.columns([3, 1])
+        with col_proc:
+            if st.button("▶ Procesar HC pseudonimizada", type="primary", key="pseu_procesar_btn"):
+                with st.spinner("Ejecutando pipeline NLP..."):
+                    try:
+                        r = requests.post(
+                            f"{API}/hcd/procesar-texto",
+                            json={
+                                "texto": data["texto_pseudonimizado"],
+                                "nombre_archivo": data.get("nombre_archivo", "hc_pseudonimizada.txt"),
+                            },
+                            timeout=60,
+                        )
+                        if r.status_code == 200:
+                            st.session_state["pseu_reporte"] = r.json()
+                            st.rerun()
+                        else:
+                            st.error(f"Error {r.status_code}: {r.text}")
+                    except Exception as e:
+                        st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
+        with col_nueva:
+            if st.button("Nueva HC", key="pseu_nueva_btn"):
+                st.session_state["pseu_resultado"] = None
+                st.rerun()
+
+    # ── Paso 3: reporte ──────────────────────────────────────────────────────
+    else:
+        reporte = st.session_state["pseu_reporte"]
+        if "error" in reporte:
+            st.error(reporte["error"])
+        else:
+            st.success("HC procesada correctamente.")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Intervenciones válidas", reporte.get("total_intervenciones", 0))
+            c2.metric("Registros raw", reporte.get("total_registros_raw", 0))
+            c3.metric("Días internación", reporte.get("internacion", {}).get("dias_totales", 0))
+
+            areas = reporte.get("intervenciones_por_area", {})
+            if areas:
+                st.subheader("Intervenciones por área")
+                st.dataframe(
+                    pd.DataFrame([{"Área": k, "Intervenciones": v}
+                                  for k, v in sorted(areas.items(), key=lambda x: -x[1])]),
+                    hide_index=True, use_container_width=True,
+                )
+
+            vars_presentes = [k for k, v in reporte.get("variables_clinicas_detectadas", {}).items() if v]
+            if vars_presentes:
+                st.subheader("Variables clínicas detectadas")
+                st.write(", ".join(vars_presentes))
+
+            ics = reporte.get("interconsultas_detectadas", [])
+            if ics:
+                with st.expander(f"Interconsultas ({len(ics)})"):
+                    st.json(ics)
+
+        if st.button("Nueva HC", key="pseu_nueva2_btn"):
+            st.session_state["pseu_resultado"] = None
+            st.session_state["pseu_reporte"] = None
+            st.rerun()
 elif modulo == "Procesamiento NLP":
     st.title("Procesamiento NLP")
     st.caption("Pipeline clínico local — sin modelos de lenguaje externos.")
@@ -637,7 +950,7 @@ elif modulo == "RAG":
             docs = resp_docs.json() if resp_docs.status_code == 200 else []
         except Exception as e:
             docs = []
-            st.error(f"Error al obtener documentos: {e}")
+            st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
         if docs:
             rows = []
@@ -673,7 +986,7 @@ elif modulo == "RAG":
                     else:
                         st.error(f"Error al subir: {r.status_code}")
                 except Exception as e:
-                    st.error(f"Error de conexión: {e}")
+                    st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
     with tab_busqueda:
         st.subheader("Búsqueda semántica")
@@ -698,7 +1011,7 @@ elif modulo == "RAG":
                         else:
                             st.error(f"Error API: {r.status_code}")
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
             else:
                 st.warning("Escribí una consulta primero.")
 elif modulo == "LLM local":
@@ -724,13 +1037,13 @@ elif modulo == "LLM local":
                         else:
                             st.error(f"Error API: {r.status_code}")
                     except Exception as e:
-                        st.error(f"Error de conexión: {e}")
+                        st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
             else:
                 st.warning("Escribí una consulta primero.")
 
     with tab_mistral:
         st.info("Integración con Mistral en desarrollo. Se conectará vía Ollama con el mismo endpoint local.")
-        st.code("ollama run mistral", language="bash")
+        st.code("ollama serve\nollama list", language="bash")
 elif modulo == "Interconsultas HCD":
     st.title("Interconsultas detectadas")
 
@@ -1019,6 +1332,9 @@ elif modulo == "Resumen HCs":
         st.error("Error al obtener reporte total.")
         st.stop()
     reporte = r.json()
+    if not isinstance(reporte, dict) or not isinstance(reporte.get("resumen_ejecutivo"), dict):
+        st.info("No hay un reporte disponible todavía.")
+        st.stop()
     resumen = reporte["resumen_ejecutivo"]
     casos = reporte["casos"]
     vars_freq = reporte["variables_clinicas_por_frecuencia"]
@@ -1355,7 +1671,7 @@ elif modulo == "📊 Internaciones SM":
                     else:
                         st.error(f"Error {_r.status_code}: {_r.text[:200]}")
                 except Exception as _e:
-                    st.error(f"Error de conexión: {_e}")
+                    st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
     _periodo_q = st.session_state.get("int_periodo", "2026-05")
 
@@ -1385,7 +1701,7 @@ elif modulo == "📊 Internaciones SM":
             else:
                 st.error(f"Error API: {_ri.status_code}")
         except Exception as _e:
-            st.error(f"Error de conexión: {_e}")
+            st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
     with tab_eps:
         st.subheader(f"Episodios — {_periodo_q}")
@@ -1405,7 +1721,7 @@ elif modulo == "📊 Internaciones SM":
             else:
                 st.error(f"Error API: {_re.status_code}")
         except Exception as _e:
-            st.error(f"Error de conexión: {_e}")
+            st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
     with tab_rei:
         st.subheader(f"Reingresos ≤ 30 días — {_periodo_q}")
@@ -1421,7 +1737,7 @@ elif modulo == "📊 Internaciones SM":
             else:
                 st.error(f"Error API: {_rr.status_code}")
         except Exception as _e:
-            st.error(f"Error de conexión: {_e}")
+            st.error("No se pudo completar la operación. Verificá el archivo y los servicios locales.")
 
 elif modulo == "Informe":
     st.title("Informe Final - JSON")

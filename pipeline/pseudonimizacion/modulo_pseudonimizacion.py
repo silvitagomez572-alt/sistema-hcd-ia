@@ -35,6 +35,9 @@ SENSITIVE_KEYS = {
     "paciente_id",
     "texto_extraido",
     "profesional",
+    "codigohc",
+    "fuente_ingreso",
+    "fuente_egreso",
 }
 
 
@@ -43,6 +46,8 @@ def pseudonymize_identifier(identifier: Any, prefix: str = "PAC") -> str:
     value = re.sub(r"\s+", " ", str(identifier or "")).strip().upper()
     if not value:
         value = "SIN_IDENTIFICADOR"
+    if re.fullmatch(re.escape(prefix) + r"-[A-F0-9]{8}", value):
+        return value
     digest = hashlib.sha256(f"{PSEUDONYM_SALT}|{value}".encode("utf-8")).hexdigest()
     return f"{prefix}-{digest[:8].upper()}"
 
@@ -148,6 +153,10 @@ def pseudonimizar_texto(texto: Any) -> str:
 def _sanitize_key_value(key: str, value: Any) -> Any:
     key_norm = key.lower()
     if key_norm in SENSITIVE_KEYS:
+        if key_norm == "codigohc":
+            return pseudonymize_identifier(value, prefix="HC")
+        if key_norm in {"fuente_ingreso", "fuente_egreso"}:
+            return pseudonymize_identifier(value, prefix="DOC") if value else None
         if key_norm == "texto_extraido":
             return "[TEXTO_EXTRAIDO_NO_EXPORTADO]"
         if key_norm in {"archivo", "filename", "nombre_archivo"}:

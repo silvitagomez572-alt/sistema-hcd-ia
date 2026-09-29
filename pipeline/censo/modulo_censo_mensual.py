@@ -371,6 +371,14 @@ def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
     else:
         raise ValueError(f"Formato no soportado: {sufijo}")
 
+    # Aplanar MultiIndex de columnas (aparece con pd.read_html cuando la tabla
+    # tiene encabezado en dos filas, como exportaciones VADIGU con subtítulos)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = [
+            ' '.join(str(c) for c in col if str(c) not in ('', 'nan')).strip()
+            for col in df.columns
+        ]
+
     # Normalizar nombres de columnas: strip + colapsar whitespace interno
     df.columns = [re.sub(r'\s+', ' ', str(c)).strip() for c in df.columns]
 
@@ -382,6 +390,11 @@ def leer_archivo_censo(ruta: Union[str, pathlib.Path]) -> pd.DataFrame:
         "ingreso": "Ingreso", "estada": "Estada", "dias estada": "Estada",
     }
     df = df.rename(columns={c: _alias[c.lower()] for c in df.columns if c.lower() in _alias})
+
+    # Eliminar columnas duplicadas después del alias (conservar primera ocurrencia)
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated(keep='first')]
+
     df["_archivo"] = ruta.name
     return df
 
@@ -461,7 +474,7 @@ def consolidar_mes(
 
     if errores:
         for nombre, msg in errores:
-            print(f"[censo] ADVERTENCIA — {nombre}: {msg}")
+            print("[censo] ADVERTENCIA: un archivo no pudo procesarse; detalle privado omitido")
 
     if not fragmentos:
         return pd.DataFrame(columns=COLUMNAS_ESPERADAS)
@@ -482,6 +495,67 @@ def consolidar_mes(
     consolidado = consolidado.drop_duplicates(subset=["codigoHC"], keep="last")
     consolidado = consolidado.reset_index(drop=True)
     return consolidado
+
+
+def calcular_indicadores_mensuales(datos: dict) -> dict:
+    """
+    Calcula los indicadores estadísticos mensuales del servicio de Salud Mental
+    a partir de los valores del censo (hoja SALUD MENTAL del formulario institucional).
+
+    Entradas (todas opcionales; ausentes o None se tratan como 0):
+        altas, defunciones_menor_48, defunciones_mayor_48, pase_a,
+        pacientes_dia, dias_camas_disponibles, dias_del_mes, dias_estada
+
+    Reglas: divisor 0 → 0.0; resultados redondeados a 1 decimal.
+    """
+    def _n(k: str) -> float:
+        v = datos.get(k)
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _div(num: float, den: float) -> float:
+        return round(num / den, 1) if den else 0.0
+
+    altas           = _n("altas")
+    def_menor_48    = _n("defunciones_menor_48")
+    def_mayor_48    = _n("defunciones_mayor_48")
+    pase_a          = _n("pase_a")
+    pacientes_dia   = _n("pacientes_dia")
+    dias_camas_disp = _n("dias_camas_disponibles")
+    dias_del_mes    = _n("dias_del_mes")
+    dias_estada     = _n("dias_estada")
+
+    total_egresos              = altas + def_menor_48 + def_mayor_48 + pase_a
+    porcentaje_ocupacional     = _div(pacientes_dia * 100, dias_camas_disp)
+    promedio_camas_disponibles = _div(dias_camas_disp, dias_del_mes)
+    promedio_diario_pacientes  = _div(pacientes_dia, dias_del_mes)
+    giro_camas                 = _div(total_egresos, promedio_camas_disponibles)
+    promedio_dia_estada        = _div(dias_estada, total_egresos)
+    tasa_mortalidad_menor_48   = _div(def_menor_48 * 100, total_egresos)
+    tasa_mortalidad_mayor_48   = _div(def_mayor_48 * 100, total_egresos)
+
+    return {
+        "total_egresos":               round(total_egresos, 1),
+        "porcentaje_ocupacional":      porcentaje_ocupacional,
+        "promedio_camas_disponibles":  promedio_camas_disponibles,
+        "promedio_diario_pacientes":   promedio_diario_pacientes,
+        "giro_camas":                  giro_camas,
+        "promedio_dia_estada":         promedio_dia_estada,
+        "tasa_mortalidad_menor_48":    tasa_mortalidad_menor_48,
+        "tasa_mortalidad_mayor_48":    tasa_mortalidad_mayor_48,
+        "entradas": {
+            "altas":                  altas,
+            "defunciones_menor_48":   def_menor_48,
+            "defunciones_mayor_48":   def_mayor_48,
+            "pase_a":                 pase_a,
+            "pacientes_dia":          pacientes_dia,
+            "dias_camas_disponibles": dias_camas_disp,
+            "dias_del_mes":           dias_del_mes,
+            "dias_estada":            dias_estada,
+        },
+    }
 
 
 def resumen_mensual(df: pd.DataFrame) -> dict:

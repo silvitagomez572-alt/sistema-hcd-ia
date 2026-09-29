@@ -39,3 +39,25 @@ secrets.json
 .DS_Store
 Thumbs.db
 uploads/
+
+# Datos privados y entornos de entrega
+.local/
+.venv*/
+.pytest_cache/
+outputs/
+reports/
+entrega/evidencia-local/
+*.db-*
+*.sqlite3-*
+.env.*
+!.env.example
+
+# Informes clínicos históricos conservados localmente, fuera de la entrega pública
+api/hcd/data/json_maestro_hc_salud_mental.json
+docs/calibracion_final.md
+docs/validacion_clinica.md
+docs/validacion_manual_hc_corta.md
+docs/version_estable_pre_entrega.md
+docs/informe_mayo_2026.html
+docs/informe_mayo_2026.pdf
+rag/db-reviewed/
