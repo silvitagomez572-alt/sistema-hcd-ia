@@ -1,0 +1,104 @@
+{
+  "backend": "sentence-transformer",
+  "scope": "synthetic retrieval only; no clinical validation; no LLM",
+  "documents": 6,
+  "queries": 6,
+  "metrics": {
+    "1": {
+      "Recall@1": 1.0,
+      "Precision@1": 1.0,
+      "MRR@1": 1.0
+    },
+    "3": {
+      "Recall@3": 1.0,
+      "Precision@3": 0.3333333333333333,
+      "MRR@3": 1.0
+    }
+  },
+  "rankings": [
+    {
+      "query_id": "q1",
+      "ranked": [
+        "backup",
+        "census",
+        "privacy",
+        "ollama",
+        "startup",
+        "rag"
+      ],
+      "relevant": [
+        "backup"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "ranked": [
+        "privacy",
+        "census",
+        "ollama",
+        "startup",
+        "rag",
+        "backup"
+      ],
+      "relevant": [
+        "privacy"
+      ]
+    },
+    {
+      "query_id": "q3",
+      "ranked": [
+        "rag",
+        "census",
+        "privacy",
+        "ollama",
+        "startup",
+        "backup"
+      ],
+      "relevant": [
+        "rag"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "ranked": [
+        "ollama",
+        "census",
+        "privacy",
+        "startup",
+        "rag",
+        "backup"
+      ],
+      "relevant": [
+        "ollama"
+      ]
+    },
+    {
+      "query_id": "q5",
+      "ranked": [
+        "census",
+        "privacy",
+        "startup",
+        "ollama",
+        "rag",
+        "backup"
+      ],
+      "relevant": [
+        "census"
+      ]
+    },
+    {
+      "query_id": "q6",
+      "ranked": [
+        "startup",
+        "census",
+        "ollama",
+        "privacy",
+        "rag",
+        "backup"
+      ],
+      "relevant": [
+        "startup"
+      ]
+    }
+  ]
+}

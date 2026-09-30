@@ -1,0 +1,8 @@
+{
+  "original_traversal_reproduced": true,
+  "original_exception_leak_reproduced": true,
+  "dictionary_exact_equality": true,
+  "clinical_rules_ast_unchanged": true,
+  "existing_model_synthetic_prediction": true,
+  "sklearn_version_warnings": 0
+}

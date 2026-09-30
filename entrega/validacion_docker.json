@@ -1,0 +1,8 @@
+{
+  "compose_up": true,
+  "api_health": 200,
+  "frontend_health": 200,
+  "synthetic_processing": 200,
+  "private_fixture": "synthetic only",
+  "volumes": "dedicated validation project; institutional data untouched"
+}

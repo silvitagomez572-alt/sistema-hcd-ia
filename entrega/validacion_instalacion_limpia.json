@@ -1,0 +1,16 @@
+{
+  "source_commit": "1588703ce6da742842fe6e856918d716aa78f5f0",
+  "private_files_copied": false,
+  "checks": {
+    "install": 0,
+    "pip_check": 0,
+    "pytest": 0
+  },
+  "pytest_summary": {
+    "passed": 68,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 5,
+    "seconds": 73.3
+  }
+}

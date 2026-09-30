@@ -1,0 +1,16 @@
+Referencia técnica antes del commit documental
+1588703ce6da742842fe6e856918d716aa78f5f0
+
+git log --oneline -10
+1588703 fix: leer censos HTML y preservar identificadores con ceros
+f1e0221 build: fijar entorno y documentar operacion y traslado privados
+4981382 test: validar privacidad, recuperacion y servicios con datos sinteticos
+31caa15 fix: proteger entradas, persistencia y salidas de HCD
+4508f53 fix: reemplazar ocurrencias conocidas en pseudonimizacion
+e3edb83 fix: ajustar regex de nombre en pseudonimizacion
+8f32eb8 Integracion de pseudonimizacion automatica en pipeline HCD
+7cc4aa1 fix: sync init_db with C3 internaciones schema
+e519e61 chore: add json maestro restore script
+97947a2 security: pseudonymize internaciones patient identifiers
+
+git diff --stat (cambios tracked no staged):

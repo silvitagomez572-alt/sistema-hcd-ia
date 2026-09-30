@@ -1,0 +1,16 @@
+{
+  "fixture": "synthetic, actual HTTP and SQLite; synthetic trained sklearn model",
+  "checks": {
+    "GET /health": 200,
+    "GET /docs": 200,
+    "GET /mobile": 200,
+    "GET /hcd/reportes": 200,
+    "GET /hcd/reporte-total": 200,
+    "POST /hcd/procesar-modelo": 200,
+    "persistencia tras reinicio": true,
+    "SQLite integrity_check": "ok",
+    "/rag/consulta dependencia no configurada": 503,
+    "/llm/resumir dependencia no configurada": 503,
+    "Streamlit HTTP health": 200
+  }
+}

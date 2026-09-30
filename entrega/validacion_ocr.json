@@ -1,0 +1,7 @@
+{
+  "actual_tesseract": true,
+  "language": "spa",
+  "synthetic_image": true,
+  "expected_word_detected": true,
+  "patient_documents_used": false
+}

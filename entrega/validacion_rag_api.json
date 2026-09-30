@@ -1,0 +1,10 @@
+{
+  "actual_chroma": true,
+  "actual_local_embeddings": true,
+  "synthetic_corpus": true,
+  "upload_http": 200,
+  "retrieval_http": 200,
+  "expected_top_document": true,
+  "llm_called": false,
+  "downloaded_models": false
+}

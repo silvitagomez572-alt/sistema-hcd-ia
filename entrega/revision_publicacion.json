@@ -1,0 +1,6 @@
+{
+  "tracked_files_checked": 84,
+  "dictionary_check_available": true,
+  "errors": [],
+  "limitation": "Heuristic scan plus source review; cannot prove absence of all PII, especially in historical commits."
+}

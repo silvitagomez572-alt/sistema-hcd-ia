@@ -1,0 +1,8 @@
+{
+  "downloaded_models": false,
+  "tags_http": 200,
+  "generation_http": 200,
+  "nonempty_response": true,
+  "model": "tinyllama:latest",
+  "clinical_quality_evaluated": false
+}
