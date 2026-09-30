@@ -159,3 +159,29 @@ def test_ollama_invalid_json_mock(monkeypatch):
     monkeypatch.setattr(llm.httpx,'AsyncClient',Fake)
     response=client.post('/llm/resumir',json={'texto':'sintético'})
     assert response.status_code==502
+
+@pytest.mark.parametrize('extension',['html','xls','xlsx'])
+def test_valid_census_formats(extension):
+    frame=pd.DataFrame([{'Cama':'51 A','Estado':'Ocupada','Area':'Salud Mental','Paciente':'Persona Sintetica','Edad':30,'Documento':'99999999','codigoHC':'1-99999999-1','Ingreso':'01/09/2026','Estada':3}])
+    if extension=='xlsx':
+        buffer=io.BytesIO();frame.to_excel(buffer,index=False);content=buffer.getvalue()
+    else:
+        content=frame.to_html(index=False).encode()
+    response=client.post('/censos/upload',files={'archivo':('synthetic.'+extension,content)})
+    assert response.status_code==200
+    assert response.json()['filas_salud_mental']==1
+    assert '99999999' not in response.text
+
+def test_valid_hcd_html(synthetic_model):
+    html='<html><body>'+''.join('<p>'+line+'</p>' for line in TEXT.splitlines())+'</body></html>'
+    response=client.post('/hcd/procesar-modelo',files={'archivo':('synthetic.xls',html.encode())})
+    assert response.status_code==200
+    assert response.json()['total_intervenciones']==1
+
+def test_census_html_preserves_leading_zero_identifiers(tmp_path):
+    from pipeline.censo.modulo_censo_mensual import leer_archivo_censo
+    frame=pd.DataFrame([{'Cama':'51 A','Estado':'Ocupada','Area':'Salud Mental','Documento':'00001234','codigoHC':'000001','Ingreso':'01/09/2026','Estada':'03'}])
+    path=tmp_path/'synthetic.html';path.write_text(frame.to_html(index=False))
+    parsed=leer_archivo_censo(path)
+    assert parsed.iloc[0]['Documento']=='00001234'
+    assert parsed.iloc[0]['codigoHC']=='000001'

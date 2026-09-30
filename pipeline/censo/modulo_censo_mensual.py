@@ -112,6 +112,14 @@ def _leer_csv(ruta: pathlib.Path) -> pd.DataFrame:
     raise ValueError(f"No se pudo parsear {ruta.name}: separador no detectado o archivo malformado")
 
 
+def _leer_tabla_html(tabla) -> pd.DataFrame:
+    # read_html does not accept dtype. A second parse applies converters to
+    # every detected column, preserving leading zeros in equality identifiers.
+    source = str(tabla)
+    columns = len(pd.read_html(io.StringIO(source))[0].columns)
+    return pd.read_html(io.StringIO(source), converters={i: str for i in range(columns)})[0]
+
+
 def _leer_excel(ruta: pathlib.Path) -> pd.DataFrame:
     sufijo = ruta.suffix.lower()
     if sufijo == ".xls":
@@ -122,7 +130,7 @@ def _leer_excel(ruta: pathlib.Path) -> pd.DataFrame:
         soup = BeautifulSoup(contenido, "html.parser")
         tabla = soup.find("table")
         if tabla:
-            return pd.read_html(str(tabla), dtype=str)[0]
+            return _leer_tabla_html(tabla)
         raise ValueError(f"No se encontró tabla HTML en {ruta.name}")
     return pd.read_excel(ruta, dtype=str)
 
@@ -134,8 +142,8 @@ def _leer_html(ruta: pathlib.Path) -> pd.DataFrame:
     soup = BeautifulSoup(contenido, "html.parser")
     tabla = soup.find("table")
     if tabla:
-        return pd.read_html(str(tabla), dtype=str)[0]
-    tablas = pd.read_html(str(contenido, "utf-8", errors="replace"))
+        return _leer_tabla_html(tabla)
+    tablas = pd.read_html(io.StringIO(str(contenido, "utf-8", errors="replace")))
     if not tablas:
         raise ValueError(f"No se encontró tabla en {ruta.name}")
     return tablas[0]
